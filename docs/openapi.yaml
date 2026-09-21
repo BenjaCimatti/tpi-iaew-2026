@@ -1,0 +1,377 @@
+openapi: 3.1.0
+info:
+  title: API de Pedidos de Restaurante
+  version: "1.0.0"
+  description: >
+    API REST para registrar pedidos, confirmarlos, generar órdenes de cocina
+    y administrar el catálogo de productos. TPI - Dominio 1 (IAEW 2026).
+
+servers:
+  - url: http://localhost:3000
+    description: Entorno local (docker-compose)
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Productos
+  - name: Pedidos
+  - name: Salud
+
+paths:
+  /health-protegido:
+    get:
+      tags: [Salud]
+      summary: Endpoint de ejemplo protegido con x-api-key (comparación con OAuth2/JWT)
+      security:
+        - apiKeyAuth: []
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              example: { "status": "ok" }
+        "401":
+          description: x-api-key ausente o inválida
+
+  /productos:
+    get:
+      tags: [Productos]
+      summary: Listar productos
+      security:
+        - bearerAuth: ["read:pedidos"]
+      responses:
+        "200":
+          description: Lista de productos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Producto"
+    post:
+      tags: [Productos]
+      summary: Crear producto
+      security:
+        - bearerAuth: ["admin:productos"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductoInput"
+            example:
+              nombre: "Milanesa napolitana"
+              descripcion: "Con papas fritas"
+              precio: 8500
+              categoria: "plato principal"
+              disponible: true
+      responses:
+        "201":
+          description: Producto creado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+        "400":
+          $ref: "#/components/responses/ErrorValidacion"
+
+  /productos/{productoId}:
+    parameters:
+      - $ref: "#/components/parameters/ProductoId"
+    get:
+      tags: [Productos]
+      summary: Obtener un producto
+      security:
+        - bearerAuth: ["read:pedidos"]
+      responses:
+        "200":
+          description: Producto encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+        "404":
+          $ref: "#/components/responses/NoEncontrado"
+    put:
+      tags: [Productos]
+      summary: Actualizar producto
+      security:
+        - bearerAuth: ["admin:productos"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ProductoInput"
+      responses:
+        "200":
+          description: Producto actualizado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Producto"
+        "404":
+          $ref: "#/components/responses/NoEncontrado"
+    delete:
+      tags: [Productos]
+      summary: Eliminar producto
+      security:
+        - bearerAuth: ["admin:productos"]
+      responses:
+        "204":
+          description: Eliminado
+        "404":
+          $ref: "#/components/responses/NoEncontrado"
+
+  /pedidos:
+    get:
+      tags: [Pedidos]
+      summary: Listar pedidos
+      security:
+        - bearerAuth: ["read:pedidos"]
+      parameters:
+        - name: estado
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [pendiente, confirmado, en_preparacion, listo, entregado, cancelado]
+      responses:
+        "200":
+          description: Lista de pedidos
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Pedido"
+    post:
+      tags: [Pedidos]
+      summary: Crear pedido (estado inicial "pendiente")
+      security:
+        - bearerAuth: ["write:pedidos"]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PedidoInput"
+            example:
+              mesaId: "b3f1a2e0-1111-4a2b-9c3d-000000000001"
+              items:
+                - productoId: "a1c9f0e0-2222-4a2b-9c3d-000000000002"
+                  cantidad: 2
+      responses:
+        "201":
+          description: Pedido creado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pedido"
+        "400":
+          $ref: "#/components/responses/ErrorValidacion"
+
+  /pedidos/{pedidoId}:
+    parameters:
+      - $ref: "#/components/parameters/PedidoId"
+    get:
+      tags: [Pedidos]
+      summary: Obtener un pedido
+      security:
+        - bearerAuth: ["read:pedidos"]
+      responses:
+        "200":
+          description: Pedido encontrado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pedido"
+        "404":
+          $ref: "#/components/responses/NoEncontrado"
+
+  /pedidos/{pedidoId}/confirmar:
+    parameters:
+      - $ref: "#/components/parameters/PedidoId"
+    post:
+      tags: [Pedidos]
+      summary: >
+        Transacción multi-paso: valida productos, calcula total, cambia estado
+        a "confirmado", genera evento pedido.confirmado (consumido por cocina).
+      security:
+        - bearerAuth: ["confirm:pedidos"]
+      responses:
+        "200":
+          description: Pedido confirmado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pedido"
+              example:
+                id: "d4e5f6a0-3333-4a2b-9c3d-000000000003"
+                mesaId: "b3f1a2e0-1111-4a2b-9c3d-000000000001"
+                estado: "confirmado"
+                total: 17000
+                items:
+                  - productoId: "a1c9f0e0-2222-4a2b-9c3d-000000000002"
+                    cantidad: 2
+                    precioUnitario: 8500
+        "404":
+          $ref: "#/components/responses/NoEncontrado"
+        "409":
+          description: Pedido ya confirmado, sin ítems, o con producto inexistente/no disponible
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  parameters:
+    ProductoId:
+      name: productoId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    PedidoId:
+      name: pedidoId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    NoEncontrado:
+      description: Recurso no encontrado
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    ErrorValidacion:
+      description: Error de validación de entrada
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        codigo:
+          type: string
+          example: "PEDIDO_YA_CONFIRMADO"
+        mensaje:
+          type: string
+          example: "El pedido ya fue confirmado previamente"
+
+    ProductoInput:
+      type: object
+      required: [nombre, precio]
+      properties:
+        nombre:
+          type: string
+        descripcion:
+          type: string
+        precio:
+          type: number
+          format: double
+          minimum: 0
+        categoria:
+          type: string
+        disponible:
+          type: boolean
+          default: true
+
+    Producto:
+      allOf:
+        - $ref: "#/components/schemas/ProductoInput"
+        - type: object
+          properties:
+            id:
+              type: string
+              format: uuid
+            creadoEn:
+              type: string
+              format: date-time
+
+    ItemPedidoInput:
+      type: object
+      required: [productoId, cantidad]
+      properties:
+        productoId:
+          type: string
+          format: uuid
+        cantidad:
+          type: integer
+          minimum: 1
+
+    ItemPedido:
+      allOf:
+        - $ref: "#/components/schemas/ItemPedidoInput"
+        - type: object
+          properties:
+            precioUnitario:
+              type: number
+              format: double
+
+    PedidoInput:
+      type: object
+      required: [mesaId, items]
+      properties:
+        mesaId:
+          type: string
+          format: uuid
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/ItemPedidoInput"
+
+    Pedido:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        mesaId:
+          type: string
+          format: uuid
+        estado:
+          type: string
+          enum: [pendiente, confirmado, en_preparacion, listo, entregado, cancelado]
+        total:
+          type: number
+          format: double
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ItemPedido"
+        creadoEn:
+          type: string
+          format: date-time
+        confirmadoEn:
+          type: string
+          format: date-time
+          nullable: true
+
+  securitySchemes:
+    bearerAuth:
+      type: oauth2
+      description: OAuth 2.0 (Auth0) - flujo client_credentials, scopes por endpoint
+      flows:
+        clientCredentials:
+          tokenUrl: https://TU_DOMINIO_AUTH0.auth0.com/oauth/token
+          scopes:
+            read:pedidos: Leer pedidos
+            write:pedidos: Crear/editar pedidos
+            confirm:pedidos: Confirmar pedidos
+            admin:productos: Administrar productos
+            read:cocina: Leer órdenes de cocina
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: Ejemplo mínimo de protección con API key (solo endpoint de comparación)
