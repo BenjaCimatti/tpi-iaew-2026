@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<diagram program="umlet" version="15.1">
+  <zoom_level>10</zoom_level>
+
+  <!-- Personas -->
+  <element><id>UMLClass</id><coordinates><x>40</x><y>20</y><w>200</w><h>100</h></coordinates>
+    <panel_attributes>bg=#08427b
+fg=white
+halign=center
+valign=center
+&lt;&lt;person&gt;&gt;
+*Mesero/Cliente*
+Crea pedidos desde la mesa</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>400</x><y>20</y><w>200</w><h>100</h></coordinates>
+    <panel_attributes>bg=#08427b
+fg=white
+halign=center
+valign=center
+&lt;&lt;person&gt;&gt;
+*Cocina*
+Sigue el avance de preparación</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>760</x><y>20</y><w>200</w><h>100</h></coordinates>
+    <panel_attributes>bg=#08427b
+fg=white
+halign=center
+valign=center
+&lt;&lt;person&gt;&gt;
+*Administrador*
+Gestiona el catálogo</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <!-- Sistema -->
+  <element><id>UMLClass</id><coordinates><x>360</x><y>260</y><w>280</w><h>110</h></coordinates>
+    <panel_attributes>bg=#1168bd
+fg=white
+halign=center
+valign=center
+&lt;&lt;system&gt;&gt;
+*Plataforma de Pedidos*
+Registra, confirma y envía
+pedidos a cocina</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <!-- Sistemas externos -->
+  <element><id>UMLClass</id><coordinates><x>240</x><y>480</y><w>200</w><h>100</h></coordinates>
+    <panel_attributes>bg=gray
+fg=white
+halign=center
+valign=center
+&lt;&lt;external_system&gt;&gt;
+*Auth0*
+Emite y valida tokens JWT</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>560</x><y>480</y><w>200</w><h>100</h></coordinates>
+    <panel_attributes>bg=gray
+fg=white
+halign=center
+valign=center
+&lt;&lt;external_system&gt;&gt;
+*Notificaciones*
+Webhook receiver (mock)</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <!-- Relaciones -->
+  <element><id>Relation</id><coordinates><x>140</x><y>120</y><w>220</w><h>195</h></coordinates>
+    <panel_attributes>lt=-&gt;
+Crea y confirma pedidos
+[HTTPS]</panel_attributes><additional_attributes>0;0;0;195;220;195</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>490</x><y>120</y><w>20</w><h>140</h></coordinates>
+    <panel_attributes>lt=-&gt;
+Consulta avance
+[WebSocket]</panel_attributes><additional_attributes>10;0;10;140</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>640</x><y>120</y><w>220</w><h>195</h></coordinates>
+    <panel_attributes>lt=-&gt;
+Administra productos
+[HTTPS]</panel_attributes><additional_attributes>220;0;220;195;0;195</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>390</x><y>370</y><w>20</w><h>110</h></coordinates>
+    <panel_attributes>lt=-&gt;
+Valida tokens
+[OAuth 2.0]</panel_attributes><additional_attributes>10;0;10;110</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>590</x><y>370</y><w>20</w><h>110</h></coordinates>
+    <panel_attributes>lt=-&gt;
+Notifica cambios
+[Webhook]</panel_attributes><additional_attributes>10;0;10;110</additional_attributes></element>
+</diagram>

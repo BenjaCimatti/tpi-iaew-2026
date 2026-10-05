@@ -1,0 +1,159 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<diagram program="umlet" version="15.1">
+  <zoom_level>10</zoom_level>
+
+  <!-- Boundary (primero, para que quede detrás) -->
+  <element><id>UMLClass</id><coordinates><x>260</x><y>20</y><w>1300</w><h>700</h></coordinates>
+    <panel_attributes>bg=#f5f5f5
+lt=.
+valign=top
+halign=center
+*API REST*
+[CONTAINER]</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <!-- Externos -->
+  <element><id>UMLClass</id><coordinates><x>20</x><y>265</y><w>160</w><h>90</h></coordinates>
+    <panel_attributes>bg=gray
+fg=white
+halign=center
+valign=center
+&lt;&lt;external_system&gt;&gt;
+*Auth0 (JWKS)*</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>1620</x><y>265</y><w>180</w><h>90</h></coordinates>
+    <panel_attributes>bg=#438dd5
+fg=white
+halign=center
+valign=center
+&lt;&lt;container_db&gt;&gt;
+*PostgreSQL*</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>1620</x><y>600</y><w>180</w><h>90</h></coordinates>
+    <panel_attributes>bg=#438dd5
+fg=white
+halign=center
+valign=center
+&lt;&lt;container_queue&gt;&gt;
+*RabbitMQ*</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <!-- Componentes -->
+  <element><id>UMLClass</id><coordinates><x>300</x><y>265</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#85bbf0
+fg=black
+halign=center
+valign=center
+&lt;&lt;component&gt;&gt;
+*Auth Middleware*
+/[Express mw]/
+Valida JWT, scopes y x-api-key</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>620</x><y>100</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#85bbf0
+fg=black
+halign=center
+valign=center
+&lt;&lt;component&gt;&gt;
+*ProductoController*
+/[Express Router]/</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>620</x><y>430</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#85bbf0
+fg=black
+halign=center
+valign=center
+&lt;&lt;component&gt;&gt;
+*PedidoController*
+/[Express Router]/</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>620</x><y>600</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#85bbf0
+fg=black
+halign=center
+valign=center
+&lt;&lt;component&gt;&gt;
+*Logger*
+/[pino/winston]/</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>940</x><y>100</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#85bbf0
+fg=black
+halign=center
+valign=center
+&lt;&lt;component&gt;&gt;
+*ProductoService*
+/[Servicio de dominio]/</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>940</x><y>430</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#85bbf0
+fg=black
+halign=center
+valign=center
+&lt;&lt;component&gt;&gt;
+*PedidoService*
+/[Servicio de dominio]/
+Orquesta confirmar pedido</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>940</x><y>600</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#85bbf0
+fg=black
+halign=center
+valign=center
+&lt;&lt;component&gt;&gt;
+*EventPublisher*
+/[Cliente AMQP]/</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>1240</x><y>265</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#85bbf0
+fg=black
+halign=center
+valign=center
+&lt;&lt;component&gt;&gt;
+*Repositorios*
+/[Data access]/
+ProductoRepository / PedidoRepository</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <!-- Relaciones -->
+  <element><id>Relation</id><coordinates><x>180</x><y>300</y><w>120</w><h>20</h></coordinates>
+    <panel_attributes>lt=&lt;-
+valida firma</panel_attributes><additional_attributes>0;10;120;10</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>400</x><y>145</y><w>220</w><h>120</h></coordinates>
+    <panel_attributes>lt=-&gt;
+usa</panel_attributes><additional_attributes>220;0;0;0;0;120</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>400</x><y>355</y><w>220</w><h>120</h></coordinates>
+    <panel_attributes>lt=-&gt;
+usa</panel_attributes><additional_attributes>220;120;0;120;0;0</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>820</x><y>135</y><w>120</w><h>20</h></coordinates>
+    <panel_attributes>lt=-&gt;
+usa</panel_attributes><additional_attributes>0;10;120;10</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>820</x><y>465</y><w>120</w><h>20</h></coordinates>
+    <panel_attributes>lt=-&gt;
+usa</panel_attributes><additional_attributes>0;10;120;10</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>710</x><y>520</y><w>20</w><h>80</h></coordinates>
+    <panel_attributes>lt=-&gt;
+loguea</panel_attributes><additional_attributes>10;0;10;80</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>1140</x><y>145</y><w>200</w><h>120</h></coordinates>
+    <panel_attributes>lt=-&gt;
+usa</panel_attributes><additional_attributes>0;0;200;0;200;120</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>1140</x><y>355</y><w>200</w><h>120</h></coordinates>
+    <panel_attributes>lt=-&gt;
+usa</panel_attributes><additional_attributes>0;120;200;120;200;0</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>1030</x><y>520</y><w>20</w><h>80</h></coordinates>
+    <panel_attributes>lt=-&gt;
+publica evento</panel_attributes><additional_attributes>10;0;10;80</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>1440</x><y>300</y><w>180</w><h>20</h></coordinates>
+    <panel_attributes>lt=-&gt;
+SQL</panel_attributes><additional_attributes>0;10;180;10</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>1140</x><y>635</y><w>480</w><h>20</h></coordinates>
+    <panel_attributes>lt=-&gt;
+AMQP</panel_attributes><additional_attributes>0;10;480;10</additional_attributes></element>
+</diagram>

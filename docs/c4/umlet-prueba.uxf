@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<diagram program="umlet" version="15.1">
+  <zoom_level>10</zoom_level>
+
+  <!-- Boundary (primero, para que quede detrás) -->
+  <element><id>UMLClass</id><coordinates><x>20</x><y>150</y><w>1220</w><h>380</h></coordinates>
+    <panel_attributes>bg=#f5f5f5
+lt=.
+valign=top
+halign=center
+*Plataforma de Pedidos*
+[SYSTEM]</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <!-- Personas -->
+  <element><id>UMLClass</id><coordinates><x>40</x><y>20</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#08427b
+fg=white
+halign=center
+valign=center
+&lt;&lt;person&gt;&gt;
+*Mesero/Cliente*</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>40</x><y>560</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#08427b
+fg=white
+halign=center
+valign=center
+&lt;&lt;person&gt;&gt;
+*Administrador*</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>1340</x><y>400</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#08427b
+fg=white
+halign=center
+valign=center
+&lt;&lt;person&gt;&gt;
+*Cocina*</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <!-- Sistemas externos -->
+  <element><id>UMLClass</id><coordinates><x>360</x><y>20</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=gray
+fg=white
+halign=center
+valign=center
+&lt;&lt;external_system&gt;&gt;
+*Auth0*</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>1340</x><y>200</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=gray
+fg=white
+halign=center
+valign=center
+&lt;&lt;external_system&gt;&gt;
+*Notificaciones*</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <!-- Contenedores -->
+  <element><id>UMLClass</id><coordinates><x>40</x><y>200</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#438dd5
+fg=white
+halign=center
+valign=center
+&lt;&lt;container&gt;&gt;
+*Frontend Web*
+/[SPA (a definir)]/
+App del mozo y panel admin</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>360</x><y>200</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#438dd5
+fg=white
+halign=center
+valign=center
+&lt;&lt;container&gt;&gt;
+*API REST*
+/[Node.js/Express]/
+Valida JWT/scopes, orquesta</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>680</x><y>200</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#438dd5
+fg=white
+halign=center
+valign=center
+&lt;&lt;container_queue&gt;&gt;
+*Broker*
+/[RabbitMQ]/
+Evento pedido.confirmado</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>1000</x><y>200</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#438dd5
+fg=white
+halign=center
+valign=center
+&lt;&lt;container&gt;&gt;
+*Worker de Cocina*
+/[Node.js]/
+Consume evento y genera OrdenCocina</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>680</x><y>400</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#438dd5
+fg=white
+halign=center
+valign=center
+&lt;&lt;container_db&gt;&gt;
+*Base de datos*
+/[PostgreSQL]/
+Productos, Pedidos, Órdenes</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <element><id>UMLClass</id><coordinates><x>1000</x><y>400</y><w>200</w><h>90</h></coordinates>
+    <panel_attributes>bg=#438dd5
+fg=white
+halign=center
+valign=center
+&lt;&lt;container&gt;&gt;
+*Gateway WebSocket*
+/[Node.js/ws]/
+Difunde estado al tablero</panel_attributes><additional_attributes></additional_attributes></element>
+
+  <!-- Relaciones -->
+  <element><id>Relation</id><coordinates><x>130</x><y>110</y><w>20</w><h>90</h></coordinates>
+    <panel_attributes>lt=-&gt;
+Usa</panel_attributes><additional_attributes>10;0;10;90</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>130</x><y>290</y><w>20</w><h>270</h></coordinates>
+    <panel_attributes>lt=-&gt;
+Usa</panel_attributes><additional_attributes>10;270;10;0</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>240</x><y>235</y><w>120</w><h>20</h></coordinates>
+    <panel_attributes>lt=-&gt;
+Llama
+[HTTPS/JWT]</panel_attributes><additional_attributes>0;10;120;10</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>450</x><y>110</y><w>20</w><h>90</h></coordinates>
+    <panel_attributes>lt=-&gt;
+Valida JWT</panel_attributes><additional_attributes>10;90;10;0</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>560</x><y>235</y><w>120</w><h>20</h></coordinates>
+    <panel_attributes>lt=-&gt;
+Publica evento
+[AMQP]</panel_attributes><additional_attributes>0;10;120;10</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>880</x><y>235</y><w>120</w><h>20</h></coordinates>
+    <panel_attributes>lt=-&gt;
+Entrega evento
+[AMQP]</panel_attributes><additional_attributes>0;10;120;10</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>500</x><y>290</y><w>180</w><h>155</h></coordinates>
+    <panel_attributes>lt=-&gt;
+Lee/escribe
+[SQL]</panel_attributes><additional_attributes>0;0;0;155;180;155</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>780</x><y>290</y><w>250</w><h>110</h></coordinates>
+    <panel_attributes>lt=-&gt;
+Crea orden
+[SQL]</panel_attributes><additional_attributes>250;0;250;30;0;30;0;110</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>1090</x><y>290</y><w>20</w><h>110</h></coordinates>
+    <panel_attributes>lt=-&gt;
+Actualiza estado</panel_attributes><additional_attributes>10;0;10;110</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>1200</x><y>235</y><w>140</w><h>20</h></coordinates>
+    <panel_attributes>lt=-&gt;
+Notifica
+[Webhook]</panel_attributes><additional_attributes>0;10;140;10</additional_attributes></element>
+
+  <element><id>Relation</id><coordinates><x>1200</x><y>435</y><w>140</w><h>20</h></coordinates>
+    <panel_attributes>lt=-&gt;
+Ve tablero
+[WebSocket]</panel_attributes><additional_attributes>140;10;0;10</additional_attributes></element>
+</diagram>
