@@ -74,4 +74,4 @@ Ver [`docs/adr/`](docs/adr/).
 ## Tag / release y commit de esta entrega
 
 - Tag: `v1.0.0`
-- Commit: _completar con el hash antes de subir el .zip a Moodle_
+- Commit: 8b3aa05d8e8463ff1a8b62c14aef7604aa1032f3
