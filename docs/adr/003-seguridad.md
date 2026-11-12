@@ -16,6 +16,7 @@ La consigna exige OAuth 2.0 + JWT con Auth0 (o equivalente) como esquema princip
   - `confirm:pedidos`
   - `admin:productos`
   - `read:cocina`
+  - `write:cocina` (agregado para E2: actualizar estados de órdenes; pendiente de configurar en Auth0 y aplicar en el servidor)
 - **Comparación con API key:** se agrega `GET /health-protegido` (o similar) protegido solo con header `x-api-key`, documentado como contraste frente al esquema OAuth 2.0/JWT — no reemplaza la protección de los endpoints de negocio.
 
 ## Alternativas consideradas

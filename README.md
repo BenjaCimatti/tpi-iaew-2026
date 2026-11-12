@@ -40,13 +40,14 @@ Contrato de API: [`docs/openapi.yaml`](docs/openapi.yaml) (OpenAPI 3.1).
 
 ## Requisitos previos
 
-- Docker y Docker Compose.
+- Docker y Docker Compose, con el motor iniciado (por ejemplo, Docker Desktop).
 - Node.js 20+ (solo si se corre la API fuera de Docker durante el desarrollo).
 - Una cuenta gratuita en [Auth0](https://auth0.com) (o equivalente) para la Entrega 2.
 
 ## Variables de entorno
 
-Copiar `.env.example` a `.env` y completar los valores:
+Desde la raíz del repositorio, copiar `.env.example` a `.env` y completar los
+valores. Si ya existe `.env`, conservarlo para no sobrescribir la configuración local:
 
 ```bash
 cp .env.example .env
@@ -60,7 +61,58 @@ cp .env.example .env
 | `AUTH0_CLIENT_ID` / `AUTH0_CLIENT_SECRET` | Credenciales del cliente Machine to Machine |
 | `API_KEY` | Clave de ejemplo para el endpoint protegido con `x-api-key` |
 
+## Ejecución local del esqueleto
 
+Los valores de ejemplo de PostgreSQL y RabbitMQ permiten levantar el esqueleto.
+Los placeholders actuales no usan Auth0 ni validan la API key; esas integraciones
+siguen pendientes para la Entrega 2.
+
+1. Levantar los servicios desde la raíz del repositorio:
+
+   ```bash
+   docker compose up -d
+   ```
+
+2. Revisar su estado:
+
+   ```bash
+   docker compose ps
+   ```
+
+   Deben aparecer `api`, `worker`, `db` y `broker` en ejecución. `db` y `broker`
+   deben indicar `healthy`; si todavía están en `starting`, esperar y repetir la
+   consulta. Para diagnosticar errores, usar `docker compose logs`.
+
+3. Consultar [http://localhost:3000](http://localhost:3000) desde el navegador o
+   la terminal:
+
+   ```bash
+   curl -i http://localhost:3000
+   ```
+
+   La respuesta esperada es HTTP `200` con
+   `API placeholder - reemplazar en Entrega 2`.
+
+4. Abrir RabbitMQ Management en
+   [http://localhost:15672](http://localhost:15672). Con `.env.example`, el usuario
+   y la contraseña son `restaurante` / `restaurante`; si se cambiaron, usar los
+   valores de `RABBITMQ_USER` y `RABBITMQ_PASSWORD` de `.env`.
+
+5. Detener y eliminar los contenedores y la red del proyecto:
+
+   ```bash
+   docker compose down
+   ```
+
+   Este comando conserva el volumen de PostgreSQL y sus datos.
+
+**Alcance de la comprobación:** API y worker son servicios `http-echo`. Una
+respuesta HTTP del placeholder y los healthchecks de PostgreSQL/RabbitMQ solo
+demuestran que el esqueleto arranca. No prueban conexiones de API/worker a la DB
+o al broker, publicación/consumo de `pedido.confirmado` ni creación de órdenes
+de cocina.
+
+Resultado de la ejecución: [verificación del esqueleto](docs/verificacion-esqueleto.md).
 
 ## Decisiones técnicas principales
 

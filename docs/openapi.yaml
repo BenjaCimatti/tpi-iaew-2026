@@ -370,6 +370,7 @@ components:
             confirm:pedidos: Confirmar pedidos
             admin:productos: Administrar productos
             read:cocina: Leer órdenes de cocina
+            write:cocina: Actualizar estados de órdenes de cocina
     apiKeyAuth:
       type: apiKey
       in: header
