@@ -1,305 +1,603 @@
+---
 openapi: 3.1.0
 info:
   title: API de Pedidos de Restaurante
-  version: "1.0.0"
-  description: >
-    API REST para registrar pedidos, confirmarlos, generar órdenes de cocina
-    y administrar el catálogo de productos. TPI - Dominio 1 (IAEW 2026).
-
+  version: 1.0.0
+  description: CRUD de Productos y Pedidos con JWT/scopes de Auth0. Endpoint
+    de comparación protegido exclusivamente con API key (E2-04).
 servers:
-  - url: http://localhost:3000
-    description: Entorno local (docker-compose)
-
+- url: http://localhost:3000
 security:
-  - bearerAuth: []
-
+- bearerAuth: []
 tags:
-  - name: Productos
-  - name: Pedidos
-  - name: Salud
-
+- name: Productos
+  description: Productos del restaurante
+- name: Pedidos
+  description: Pedidos del restaurante
+- name: Salud
+  description: Salud del restaurante
 paths:
-  /health-protegido:
+  "/health":
     get:
-      tags: [Salud]
-      summary: Endpoint de ejemplo protegido con x-api-key (comparación con OAuth2/JWT)
-      security:
-        - apiKeyAuth: []
+      summary: Comprobar conexiones; no verifica el flujo de negocio
+      security: []
+      servers:
+      - url: http://localhost:3000
+      - url: http://localhost:3001
       responses:
-        "200":
-          description: OK
+        '200':
+          description: Dependencias disponibles
           content:
             application/json:
-              example: { "status": "ok" }
-        "401":
-          description: x-api-key ausente o inválida
-
-  /productos:
+              schema:
+                "$ref": "#/components/schemas/Salud"
+        '503':
+          description: Una o ambas dependencias no disponibles
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Salud"
+      operationId: get_health
+      tags:
+      - Salud
+  "/health-protegido":
     get:
-      tags: [Productos]
+      summary: Comprobar conexiones con API key; no verifica el flujo de negocio
+      operationId: get_health_protegido
+      tags:
+      - Salud
+      security:
+      - apiKeyAuth: []
+      responses:
+        '200':
+          description: Dependencias disponibles
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Salud"
+        '401':
+          "$ref": "#/components/responses/401"
+        '503':
+          description: Dependencias no disponibles (Salud) o API key sin configurar (Error)
+          content:
+            application/json:
+              schema:
+                oneOf:
+                - "$ref": "#/components/schemas/Salud"
+                - "$ref": "#/components/schemas/Error"
+  "/productos":
+    get:
       summary: Listar productos
       security:
-        - bearerAuth: ["read:pedidos"]
+      - bearerAuth:
+        - read:pedidos
       responses:
-        "200":
-          description: Lista de productos
+        '200':
+          description: Operación exitosa
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Producto"
+                  "$ref": "#/components/schemas/Producto"
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
+      operationId: get_productos
+      tags:
+      - Productos
     post:
-      tags: [Productos]
       summary: Crear producto
       security:
-        - bearerAuth: ["admin:productos"]
+      - bearerAuth:
+        - admin:productos
+      responses:
+        '201':
+          description: Operación exitosa
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Producto"
+          headers:
+            Location:
+              description: URL del recurso creado
+              schema:
+                type: string
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '404':
+          "$ref": "#/components/responses/404"
+        '409':
+          "$ref": "#/components/responses/409"
+        '413':
+          "$ref": "#/components/responses/413"
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ProductoInput"
-            example:
-              nombre: "Milanesa napolitana"
-              descripcion: "Con papas fritas"
-              precio: 8500
-              categoria: "plato principal"
-              disponible: true
-      responses:
-        "201":
-          description: Producto creado
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Producto"
-        "400":
-          $ref: "#/components/responses/ErrorValidacion"
-
-  /productos/{productoId}:
+              "$ref": "#/components/schemas/ProductoInput"
+      operationId: post_productos
+      tags:
+      - Productos
+  "/productos/{productoId}":
     parameters:
-      - $ref: "#/components/parameters/ProductoId"
+    - name: productoId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     get:
-      tags: [Productos]
-      summary: Obtener un producto
+      summary: Consultar producto
       security:
-        - bearerAuth: ["read:pedidos"]
+      - bearerAuth:
+        - read:pedidos
       responses:
-        "200":
-          description: Producto encontrado
+        '200':
+          description: Operación exitosa
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Producto"
-        "404":
-          $ref: "#/components/responses/NoEncontrado"
+                "$ref": "#/components/schemas/Producto"
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '404':
+          "$ref": "#/components/responses/404"
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
+      operationId: get_productos_productoId
+      tags:
+      - Productos
     put:
-      tags: [Productos]
       summary: Actualizar producto
+      description: Requiere nombre y precio. Conserva descripción, categoría y disponibilidad si se omiten; enviar null explícito para vaciar descripción o categoría.
       security:
-        - bearerAuth: ["admin:productos"]
+      - bearerAuth:
+        - admin:productos
+      responses:
+        '200':
+          description: Operación exitosa
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Producto"
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '404':
+          "$ref": "#/components/responses/404"
+        '409':
+          "$ref": "#/components/responses/409"
+        '413':
+          "$ref": "#/components/responses/413"
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ProductoInput"
+              "$ref": "#/components/schemas/ProductoInput"
+      operationId: put_productos_productoId
+      tags:
+      - Productos
+    patch:
+      summary: Modificar únicamente el precio de un producto
+      description: Conserva nombre, descripción, categoría y disponibilidad. No cambia los precios históricos de los pedidos.
+      operationId: patch_productos_productoId
+      tags:
+      - Productos
+      security:
+      - bearerAuth:
+        - admin:productos
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/PrecioProductoInput"
       responses:
-        "200":
-          description: Producto actualizado
+        '200':
+          description: Producto con el precio actualizado
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Producto"
-        "404":
-          $ref: "#/components/responses/NoEncontrado"
+                "$ref": "#/components/schemas/Producto"
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '404':
+          "$ref": "#/components/responses/404"
+        '413':
+          "$ref": "#/components/responses/413"
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
     delete:
-      tags: [Productos]
-      summary: Eliminar producto
+      summary: Eliminar producto sin referencias
       security:
-        - bearerAuth: ["admin:productos"]
+      - bearerAuth:
+        - admin:productos
       responses:
-        "204":
-          description: Eliminado
-        "404":
-          $ref: "#/components/responses/NoEncontrado"
-
-  /pedidos:
+        '204':
+          description: Operación exitosa
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '404':
+          "$ref": "#/components/responses/404"
+        '409':
+          "$ref": "#/components/responses/409"
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
+      operationId: delete_productos_productoId
+      tags:
+      - Productos
+  "/pedidos":
     get:
-      tags: [Pedidos]
       summary: Listar pedidos
       security:
-        - bearerAuth: ["read:pedidos"]
-      parameters:
-        - name: estado
-          in: query
-          required: false
-          schema:
-            type: string
-            enum: [pendiente, confirmado, en_preparacion, listo, entregado, cancelado]
+      - bearerAuth:
+        - read:pedidos
       responses:
-        "200":
-          description: Lista de pedidos
+        '200':
+          description: Operación exitosa
           content:
             application/json:
               schema:
                 type: array
                 items:
-                  $ref: "#/components/schemas/Pedido"
+                  "$ref": "#/components/schemas/Pedido"
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
+      parameters:
+      - name: estado
+        in: query
+        schema:
+          type: string
+          enum:
+          - pendiente
+          - confirmado
+          - en_preparacion
+          - listo
+          - entregado
+          - cancelado
+      operationId: get_pedidos
+      tags:
+      - Pedidos
     post:
-      tags: [Pedidos]
-      summary: Crear pedido (estado inicial "pendiente")
+      summary: Crear pedido
       security:
-        - bearerAuth: ["write:pedidos"]
+      - bearerAuth:
+        - write:pedidos
+      responses:
+        '201':
+          description: Operación exitosa
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Pedido"
+          headers:
+            Location:
+              description: URL del recurso creado
+              schema:
+                type: string
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '404':
+          "$ref": "#/components/responses/404"
+        '409':
+          "$ref": "#/components/responses/409"
+        '413':
+          "$ref": "#/components/responses/413"
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/PedidoInput"
-            example:
-              mesaId: "b3f1a2e0-1111-4a2b-9c3d-000000000001"
-              items:
-                - productoId: "a1c9f0e0-2222-4a2b-9c3d-000000000002"
-                  cantidad: 2
-      responses:
-        "201":
-          description: Pedido creado
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Pedido"
-        "400":
-          $ref: "#/components/responses/ErrorValidacion"
-
-  /pedidos/{pedidoId}:
+              "$ref": "#/components/schemas/PedidoInput"
+      operationId: post_pedidos
+      tags:
+      - Pedidos
+  "/pedidos/{pedidoId}":
     parameters:
-      - $ref: "#/components/parameters/PedidoId"
+    - name: pedidoId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     get:
-      tags: [Pedidos]
-      summary: Obtener un pedido
+      summary: Consultar pedido
       security:
-        - bearerAuth: ["read:pedidos"]
+      - bearerAuth:
+        - read:pedidos
       responses:
-        "200":
-          description: Pedido encontrado
+        '200':
+          description: Operación exitosa
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Pedido"
-        "404":
-          $ref: "#/components/responses/NoEncontrado"
-
-  /pedidos/{pedidoId}/confirmar:
+                "$ref": "#/components/schemas/Pedido"
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '404':
+          "$ref": "#/components/responses/404"
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
+      operationId: get_pedidos_pedidoId
+      tags:
+      - Pedidos
+    put:
+      summary: Reemplazar pedido pendiente
+      security:
+      - bearerAuth:
+        - write:pedidos
+      responses:
+        '200':
+          description: Operación exitosa
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Pedido"
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '404':
+          "$ref": "#/components/responses/404"
+        '409':
+          "$ref": "#/components/responses/409"
+        '413':
+          "$ref": "#/components/responses/413"
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/PedidoInput"
+      operationId: put_pedidos_pedidoId
+      tags:
+      - Pedidos
+    delete:
+      summary: Eliminar pedido pendiente
+      security:
+      - bearerAuth:
+        - write:pedidos
+      responses:
+        '204':
+          description: Operación exitosa
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '404':
+          "$ref": "#/components/responses/404"
+        '409':
+          "$ref": "#/components/responses/409"
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
+      operationId: delete_pedidos_pedidoId
+      tags:
+      - Pedidos
+  "/pedidos/{pedidoId}/cancelar":
     parameters:
-      - $ref: "#/components/parameters/PedidoId"
+    - name: pedidoId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
     post:
-      tags: [Pedidos]
-      summary: >
-        Transacción multi-paso: valida productos, calcula total, cambia estado
-        a "confirmado", genera evento pedido.confirmado (consumido por cocina).
+      summary: Cancelar únicamente un pedido pendiente; conserva el registro
       security:
-        - bearerAuth: ["confirm:pedidos"]
+      - bearerAuth:
+        - write:pedidos
       responses:
-        "200":
-          description: Pedido confirmado
+        '200':
+          description: Operación exitosa
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Pedido"
-              example:
-                id: "d4e5f6a0-3333-4a2b-9c3d-000000000003"
-                mesaId: "b3f1a2e0-1111-4a2b-9c3d-000000000001"
-                estado: "confirmado"
-                total: 17000
-                items:
-                  - productoId: "a1c9f0e0-2222-4a2b-9c3d-000000000002"
-                    cantidad: 2
-                    precioUnitario: 8500
-        "404":
-          $ref: "#/components/responses/NoEncontrado"
-        "409":
-          description: Pedido ya confirmado, sin ítems, o con producto inexistente/no disponible
+                "$ref": "#/components/schemas/Pedido"
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '404':
+          "$ref": "#/components/responses/404"
+        '409':
+          "$ref": "#/components/responses/409"
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
+      operationId: post_pedidos_pedidoId_cancelar
+      tags:
+      - Pedidos
+  "/":
+    get:
+      summary: Alias del healthcheck
+      security: []
+      servers:
+      - url: http://localhost:3000
+      - url: http://localhost:3001
+      responses:
+        '200':
+          description: Dependencias disponibles
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/Error"
-
+                "$ref": "#/components/schemas/Salud"
+        '503':
+          description: Una o ambas dependencias no disponibles
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Salud"
+      operationId: get_root
+      tags:
+      - Salud
 components:
-  parameters:
-    ProductoId:
-      name: productoId
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
-    PedidoId:
-      name: pedidoId
-      in: path
-      required: true
-      schema:
-        type: string
-        format: uuid
-
-  responses:
-    NoEncontrado:
-      description: Recurso no encontrado
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
-    ErrorValidacion:
-      description: Error de validación de entrada
-      content:
-        application/json:
-          schema:
-            $ref: "#/components/schemas/Error"
-
   schemas:
-    Error:
+    PrecioProductoInput:
       type: object
+      additionalProperties: false
+      required:
+      - precio
       properties:
-        codigo:
-          type: string
-          example: "PEDIDO_YA_CONFIRMADO"
-        mensaje:
-          type: string
-          example: "El pedido ya fue confirmado previamente"
-
+        precio:
+          "$ref": "#/components/schemas/ProductoInput/properties/precio"
+      example:
+        precio: 1400
     ProductoInput:
       type: object
-      required: [nombre, precio]
+      required:
+      - nombre
+      - precio
       properties:
         nombre:
           type: string
+          minLength: 1
         descripcion:
-          type: string
+          type:
+          - string
+          - 'null'
         precio:
           type: number
-          format: double
           minimum: 0
+          maximum: 9999999999.99
+          multipleOf: 0.01
         categoria:
-          type: string
+          type:
+          - string
+          - 'null'
         disponible:
           type: boolean
           default: true
-
+      example:
+        nombre: Producto demo
+        precio: 1250.5
+        disponible: true
     Producto:
-      allOf:
-        - $ref: "#/components/schemas/ProductoInput"
-        - type: object
-          properties:
-            id:
-              type: string
-              format: uuid
-            creadoEn:
-              type: string
-              format: date-time
-
+      type: object
+      required:
+      - id
+      - nombre
+      - descripcion
+      - precio
+      - categoria
+      - disponible
+      - creadoEn
+      properties:
+        id:
+          type: string
+          format: uuid
+        nombre:
+          type: string
+          minLength: 1
+        descripcion:
+          type:
+          - string
+          - 'null'
+        precio:
+          type: number
+          minimum: 0
+          maximum: 9999999999.99
+          multipleOf: 0.01
+        categoria:
+          type:
+          - string
+          - 'null'
+        disponible:
+          type: boolean
+          default: true
+        creadoEn:
+          type: string
+          format: date-time
+      example:
+        id: a1c9f0e0-2222-4a2b-9c3d-000000000001
+        nombre: Milanesa napolitana
+        descripcion:
+        precio: 8500
+        categoria: Platos
+        disponible: true
+        creadoEn: '2026-11-13T00:00:00Z'
     ItemPedidoInput:
       type: object
-      required: [productoId, cantidad]
+      required:
+      - productoId
+      - cantidad
       properties:
         productoId:
           type: string
@@ -307,19 +605,35 @@ components:
         cantidad:
           type: integer
           minimum: 1
-
+          maximum: 2147483647
     ItemPedido:
-      allOf:
-        - $ref: "#/components/schemas/ItemPedidoInput"
-        - type: object
-          properties:
-            precioUnitario:
-              type: number
-              format: double
-
+      type: object
+      required:
+      - productoId
+      - cantidad
+      - precioUnitario
+      properties:
+        productoId:
+          type: string
+          format: uuid
+        cantidad:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        precioUnitario:
+          type: number
+          minimum: 0
+          maximum: 9999999999.99
+          multipleOf: 0.01
+          readOnly: true
     PedidoInput:
       type: object
-      required: [mesaId, items]
+      required:
+      - mesaId
+      - items
+      description: PUT reemplaza mesa e ítems. No repetir productoId. Se ignoran precios,
+        totales, IDs y estados enviados por el cliente; los precios se capturan del
+        catálogo y se conservan para productos retenidos al editar.
       properties:
         mesaId:
           type: string
@@ -328,10 +642,22 @@ components:
           type: array
           minItems: 1
           items:
-            $ref: "#/components/schemas/ItemPedidoInput"
-
+            "$ref": "#/components/schemas/ItemPedidoInput"
+      example:
+        mesaId: b3f1a2e0-1111-4a2b-9c3d-000000000001
+        items:
+        - productoId: a1c9f0e0-2222-4a2b-9c3d-000000000002
+          cantidad: 2
     Pedido:
       type: object
+      required:
+      - id
+      - mesaId
+      - estado
+      - total
+      - items
+      - creadoEn
+      - confirmadoEn
       properties:
         id:
           type: string
@@ -341,38 +667,171 @@ components:
           format: uuid
         estado:
           type: string
-          enum: [pendiente, confirmado, en_preparacion, listo, entregado, cancelado]
+          enum:
+          - pendiente
+          - confirmado
+          - en_preparacion
+          - listo
+          - entregado
+          - cancelado
         total:
           type: number
-          format: double
+          minimum: 0
+          maximum: 999999999999.99
+          multipleOf: 0.01
+          readOnly: true
         items:
           type: array
           items:
-            $ref: "#/components/schemas/ItemPedido"
+            "$ref": "#/components/schemas/ItemPedido"
         creadoEn:
           type: string
           format: date-time
         confirmadoEn:
-          type: string
+          type:
+          - string
+          - 'null'
           format: date-time
-          nullable: true
-
+      example:
+        id: d4e5f6a0-3333-4a2b-9c3d-000000000003
+        mesaId: b3f1a2e0-1111-4a2b-9c3d-000000000001
+        estado: pendiente
+        total: 15000
+        items:
+        - productoId: a1c9f0e0-2222-4a2b-9c3d-000000000002
+          cantidad: 2
+          precioUnitario: 7500
+        creadoEn: '2026-11-13T00:00:00Z'
+        confirmadoEn:
+    Error:
+      type: object
+      required:
+      - codigo
+      - mensaje
+      - correlationId
+      properties:
+        codigo:
+          type: string
+        mensaje:
+          type: string
+        correlationId:
+          type: string
+          format: uuid
+      example:
+        codigo: ESTADO_INCOMPATIBLE
+        mensaje: La operación requiere un pedido pendiente
+        correlationId: d4e5f6a0-3333-4a2b-9c3d-000000000003
+    Salud:
+      type: object
+      required:
+      - servicio
+      - estado
+      - dependencias
+      properties:
+        servicio:
+          type: string
+          enum:
+          - api
+          - worker
+        estado:
+          type: string
+          enum:
+          - ok
+          - degradado
+        dependencias:
+          type: object
+          required:
+          - db
+          - broker
+          properties:
+            db:
+              type: string
+              enum:
+              - up
+              - down
+            broker:
+              type: string
+              enum:
+              - up
+              - down
+      example:
+        servicio: api
+        estado: ok
+        dependencias:
+          db: up
+          broker: up
+  responses:
+    '400':
+      description: UUID, body, filtro o JSON inválido
+      content:
+        application/json:
+          schema:
+            "$ref": "#/components/schemas/Error"
+    '401':
+      description: Token ausente o inválido
+      content:
+        application/json:
+          schema:
+            "$ref": "#/components/schemas/Error"
+    '403':
+      description: Scope insuficiente
+      content:
+        application/json:
+          schema:
+            "$ref": "#/components/schemas/Error"
+    '404':
+      description: Recurso, mesa o producto inexistente
+      content:
+        application/json:
+          schema:
+            "$ref": "#/components/schemas/Error"
+    '409':
+      description: Estado incompatible, producto no disponible o recurso referenciado
+      content:
+        application/json:
+          schema:
+            "$ref": "#/components/schemas/Error"
+    '413':
+      description: Body mayor a 64 KB
+      content:
+        application/json:
+          schema:
+            "$ref": "#/components/schemas/Error"
+    '500':
+      description: Error interno
+      content:
+        application/json:
+          schema:
+            "$ref": "#/components/schemas/Error"
+    '503':
+      description: DB o configuración de Auth0 no disponible
+      content:
+        application/json:
+          schema:
+            "$ref": "#/components/schemas/Error"
   securitySchemes:
-    bearerAuth:
-      type: oauth2
-      description: OAuth 2.0 (Auth0) - flujo client_credentials, scopes por endpoint
-      flows:
-        clientCredentials:
-          tokenUrl: https://TU_DOMINIO_AUTH0.auth0.com/oauth/token
-          scopes:
-            read:pedidos: Leer pedidos
-            write:pedidos: Crear/editar pedidos
-            confirm:pedidos: Confirmar pedidos
-            admin:productos: Administrar productos
-            read:cocina: Leer órdenes de cocina
-            write:cocina: Actualizar estados de órdenes de cocina
     apiKeyAuth:
       type: apiKey
       in: header
       name: x-api-key
-      description: Ejemplo mínimo de protección con API key (solo endpoint de comparación)
+      description: Solo para GET /health-protegido; no autoriza los CRUD.
+    bearerAuth:
+      type: oauth2
+      description: 'Auth0: client_credentials, JWT RS256 validado mediante JWKS.'
+      flows:
+        clientCredentials:
+          tokenUrl: https://dev-6qbph7he6b6cur0j.us.auth0.com/oauth/token
+          scopes:
+            read:pedidos: Consultar productos y pedidos
+            write:pedidos: Crear, editar, eliminar y cancelar pedidos pendientes
+            admin:productos: Administrar productos
+            confirm:pedidos: Confirmar pedidos (E2-05)
+            read:cocina: Consultar cocina (E2-07)
+            write:cocina: Actualizar cocina (E2-07)
+x-endpoints-pendientes:
+  E2-05:
+  - POST /pedidos/{pedidoId}/confirmar
+  E2-07:
+  - Consulta y cambio de estado de órdenes de cocina
+x-correlation-id: Se acepta un UUID en x-correlation-id; se genera uno si está ausente
+  y se devuelve en el header. Formato inválido devuelve 400.

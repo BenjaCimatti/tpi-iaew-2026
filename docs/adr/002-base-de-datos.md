@@ -8,7 +8,7 @@ El dominio tiene entidades claramente relacionadas (Pedido -> Items -> Producto,
 
 ## Decisión
 Usamos **PostgreSQL** (SQL relacional).
-Para E2 se eligen **Prisma ORM y Prisma Migrate `7.10.1`** para acceso a datos y migraciones; CLI, cliente y adaptador PostgreSQL se fijan en la misma versión. Esta decisión todavía no está implementada.
+Para E2 se eligen **Prisma ORM y Prisma Migrate `7.10.1`** para acceso a datos y migraciones; CLI, cliente y adaptador PostgreSQL se fijan en la misma versión. E2-02 incorpora esquema, migración, seed y conexión mediante Prisma.
 La convención de nombres es JSON en `camelCase` y tablas/columnas SQL en `snake_case`, con mapeo explícito en Prisma.
 
 ## Alternativas consideradas
@@ -16,5 +16,7 @@ La convención de nombres es JSON en `camelCase` y tablas/columnas SQL en `snake
 
 ## Consecuencias
 - Necesitamos versionar el esquema Prisma y sus migraciones SQL, y un script de seed con Prisma para productos y mesas de ejemplo.
-- El `docker-compose.yml` incluye un servicio `postgres` con volumen persistente y healthcheck.
+- El `docker-compose.yml` incluye el servicio `db` con volumen persistente y healthcheck, y `migrate` como tarea previa a API/worker. El seed se ejecuta explícitamente.
+- Los productos referenciados por ítems no se eliminan; sus precios históricos se guardan en los ítems. Un pedido tiene cero o una orden, con unicidad por `pedido_id`.
+- El cliente se genera con la CLI en Docker; el código generado no se versiona. Node 24 ejecuta el cliente TypeScript generado sin incorporar un compilador adicional ([soporte nativo de Node](https://nodejs.org/docs/latest-v24.x/api/typescript.html)).
 - El modelo de datos completo está en `docs/modelo-datos.md`.

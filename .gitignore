@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+postman/*.local.postman_environment.json
 
 PLAN_ENTREGA_2.md
 
@@ -29,5 +30,6 @@ env/
 
 # Node.js
 node_modules/
+src/generated/
 dist/
 build/
