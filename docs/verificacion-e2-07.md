@@ -17,13 +17,24 @@
 | Pruebas | `npm test`: 21/21. `test:db`: 3/3. `test:api`: 3/3 (CRUD, confirmación y cocina). |
 | OpenAPI | Redocly válido; mismas 8 advertencias previas. WebSocket documentado en [websocket.md](websocket.md). |
 
-## No verificado todavía
+## Prueba con Auth0 real
 
-- **Tablero en el navegador con un token real de Auth0.** El `.env` local no
-  tiene `AUTH0_CLIENT_ID`/`AUTH0_CLIENT_SECRET`, así que no se obtuvo un token
-  real. La difusión a clientes autenticados está cubierta por las pruebas del
-  gateway, y el flujo real llegó al gateway (con 0 clientes conectados). Falta
-  abrir `/tablero` con un token real, confirmar un pedido y avanzar su estado
-  (pasos en [websocket.md](websocket.md#probar)).
+Cliente WebSocket con token real de Auth0 conectado al stack mientras se hacía
+el recorrido por HTTP con el mismo token y un `x-correlation-id` fijo:
+
+| Paso | Resultado |
+|---|---|
+| WS con token del cliente de solo lectura (`read:pedidos`) | Cierre `4403 SIN_PERMISO` |
+| WS con token principal | `auth.ok` y `snapshot` con las órdenes activas |
+| `POST /pedidos` → `POST /pedidos/{id}/confirmar` | `201`, `200 confirmado`; el tablero recibió `orden.creada` (mesa 1, `recibida`) con el mismo `correlationId` |
+| `PATCH /cocina/ordenes/{id}` `en_preparacion` y `lista` | `200`; el tablero recibió cada `orden.actualizada` (pedido `en_preparacion`, `listo`) |
+| `POST /pedidos/{id}/entregar` | `200 entregado`; el tablero recibió `pedidoEstado: entregado` |
+| Logs con el `correlationId` | API: 4 `outbox.publicar`; worker: 1 `cocina.consumir` y 4 `ws.difundir`. Ningún token en los logs. |
+| `test/auth0.integration.js` | Prueba principal y subprueba `403` aprobadas, sin omisiones |
+
+## Pendiente
+
+- Abrir `/tablero` en un navegador para la revisión visual. El protocolo que usa
+  ya se comprobó con el cliente `ws` y token real.
 - Requests de cocina y entrega en la colección Postman (E2-09).
 - Diagramas C4 con el gateway y el tablero (E2-10).
