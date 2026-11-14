@@ -1,37 +1,93 @@
 # C4 - Nivel 3: Component
 
-Vista interna del contenedor **API REST** (el contenedor más relevante para el TPI).
+## Contenedor `api`
 
-![Component](imgs/component.png)
+```mermaid
+flowchart TB
+  req["Request HTTP"]
+  subgraph http["src/http + src/observability"]
+    corr["Correlation ID<br/>(acepta o genera UUID)"]
+    obs["httpObservability<br/>métricas + log JSON por request"]
+    auth["authorization<br/>JWT RS256/JWKS + scope"]
+    apikey["api-key<br/>(solo /health-protegido)"]
+    err["errorHandler<br/>codigo · mensaje · correlationId"]
+  end
+  subgraph ctrl["src/controllers"]
+    cprod["productos"]
+    cped["pedidos<br/>(CRUD, cancelar, confirmar, entregar)"]
+    ccoc["cocina<br/>(listar, consultar, avanzar)"]
+    chealth["health · /metrics"]
+  end
+  subgraph svc["src/services"]
+    sprod["productos"]
+    sped["pedidos<br/>confirmación multi-paso"]
+    scoc["cocina (API)<br/>transiciones + evento"]
+    outbox["outbox publisher<br/>lote + publisher confirms"]
+  end
+  subgraph repo["src/repositories (Prisma)"]
+    rprod["productos"]
+    rped["pedidos<br/>FOR UPDATE / FOR SHARE"]
+    rcoc["cocina"]
+  end
+  broker["messaging/broker<br/>confirm channel + reconexión"]
+  db[("PostgreSQL")]
+  rmq[["RabbitMQ"]]
 
-## Implementado en E2-01
+  req --> corr --> obs --> auth --> ctrl
+  req -. "/health-protegido" .-> apikey --> chealth
+  cprod --> sprod --> rprod
+  cped --> sped --> rped
+  cped -- entregar --> scoc
+  ccoc --> scoc --> rcoc
+  rprod & rped & rcoc --> db
+  outbox -- "lee pendientes / marca publicados" --> db
+  outbox --> broker --> rmq
+  ctrl -. errores .-> err
+```
 
-`src/api.js` y `src/worker.js` arrancan los procesos. Para `/health`,
-`src/controllers/health.js` atiende HTTP, `src/services/health.js` combina el estado
-de dependencias y `src/repositories/database.js` ejecuta `SELECT 1` (desde E2-02,
-mediante Prisma y su adaptador PostgreSQL). `src/messaging/broker.js` mantiene y
-recupera la conexión y el canal AMQP. El esquema, migraciones y seed están en
-`prisma/`. Los componentes de pedidos de la imagen y el flujo
-siguiente siguen siendo el diseño objetivo.
+### Flujo multi-paso: confirmar pedido
 
-## Implementado en E2-03
+1. `pedidos` controller recibe `POST /pedidos/{id}/confirmar`; `authorization`
+   exige `confirm:pedidos`.
+2. `pedidos` service, **en una transacción**:
+   - bloquea el pedido (`SELECT … FOR UPDATE`) y exige estado `pendiente`;
+   - exige al menos un ítem y bloquea sus productos (`FOR SHARE`), que deben
+     existir y estar disponibles;
+   - calcula el total con los **precios capturados** en los ítems (Decimal);
+   - guarda estado `confirmado`, total y `confirmadoEn`;
+   - inserta `pedido.confirmado` en `outbox` con el correlation ID del request.
+3. Cualquier rechazo (`404`/`409`) revierte todo. Tras el commit se despierta al
+   publicador del outbox, que publica con confirmación de RabbitMQ y recién
+   entonces marca `publicado_en`.
+4. El worker consume el evento y crea la `OrdenCocina` (ver abajo).
 
-Los controllers de `productos` y `pedidos` publican los CRUD y cancelación;
-los services validan entradas y calculan importes con Decimal; los repositories
-usan Prisma. Editar/eliminar/cancelar bloquea la fila del pedido dentro de una
-transacción y exige estado `pendiente`. El middleware JWT/JWKS aplica scopes;
-la configuración del tenant real se completa en E2-04. Las respuestas de error
-incluyen correlation ID. Confirmación y publicación en outbox siguen en E2-05.
+## Contenedor `worker`
 
-## Flujo multi-paso (confirmar pedido)
+```mermaid
+flowchart LR
+  rmq[["RabbitMQ"]]
+  subgraph worker["worker (:3001)"]
+    cons["messaging/consumer<br/>ACK tras persistir · DLQ ·<br/>x-reintentos"]
+    scoc["services/cocina<br/>orden idempotente + snapshot"]
+    sub["messaging/tablero<br/>cola exclusiva orden.actualizada"]
+    gw["realtime/gateway<br/>WebSocket /ws/cocina<br/>auth por mensaje + read:cocina"]
+    jwt["http/jwt<br/>verificador JWKS"]
+    page["/tablero (HTML estático)"]
+  end
+  db[("PostgreSQL")]
+  nav["Navegador"]
 
-1. `PedidoController` recibe `POST /pedidos/{id}/confirmar` con Bearer JWT (`scope: confirm:pedidos`).
-2. `authMw` valida token y scope.
-3. `PedidoService.confirmar(id)`:
-   - Verifica que el pedido exista y no esté ya confirmado.
-   - Valida que cada producto referenciado exista y esté disponible.
-   - Calcula el total sumando `cantidad * precioUnitario`.
-   - Cambia el estado del pedido a `confirmado`.
-   - Persiste los cambios vía `PedidoRepository`.
-   - Publica el evento `pedido.confirmado` vía `EventPublisher`.
-4. El Worker de Cocina (fuera de este contenedor) consume el evento y genera la `OrdenCocina`.
+  rmq -- pedido.confirmado --> cons --> scoc --> db
+  cons -- "orden.creada" --> gw
+  rmq -- orden.actualizada --> sub --> gw
+  gw -- snapshot --> scoc
+  gw --> jwt
+  nav --> page
+  nav <-- "WebSocket" --> gw
+```
+
+Contratos: eventos en [eventos.md](../eventos.md) y WebSocket en
+[websocket.md](../websocket.md).
+
+Diagrama original de la Entrega 1 (solo API, con publicación directa del
+evento): [imgs/component.png](imgs/component.png).

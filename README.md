@@ -20,20 +20,49 @@ en tiempo real.
 **Entidades principales:** Producto, Mesa, Pedido, ItemPedido, OrdenCocina.
 **CRUD mínimo:** Productos y Pedidos.
 **Transacción multi-paso:** confirmar pedido (validar ítems y productos, calcular
-total, cambiar estado, publicar evento `pedido.confirmado`, generar orden de cocina).
+total, cambiar estado y registrar el evento `pedido.confirmado` en el outbox; el
+worker genera luego la orden de cocina).
+
+**Alcance implementado (Entrega 2):** API REST con OAuth 2.0/JWT y scopes, CRUD de
+Productos y Pedidos, endpoint comparativo con `x-api-key`, confirmación con outbox,
+RabbitMQ y worker de cocina, tablero WebSocket en tiempo real, logs JSON
+correlacionados, Prometheus/Grafana, colección Postman y prueba de carga JMeter.
+Los mozos operan con un cliente de confianza (Postman); no hay frontend completo.
+
+| Servicio | URL |
+|---|---|
+| API REST | http://localhost:3000 |
+| Worker: tablero y WebSocket | http://localhost:3001/tablero · `ws://localhost:3001/ws/cocina` |
+| RabbitMQ Management | http://localhost:15672 |
+| Grafana | http://localhost:3002 |
+| Prometheus | http://localhost:9090 |
 
 ## Arquitectura en un vistazo
 
 Ver diagramas C4 completos en `docs/c4/`:
-- [`context.md`](docs/c4/context.md) — actores y sistemas externos (Auth0, notificaciones).
-- [`container.md`](docs/c4/container.md) — API REST, Worker de cocina, Gateway WebSocket, PostgreSQL, RabbitMQ.
-- [`component.md`](docs/c4/component.md) — componentes internos de la API.
+- [`context.md`](docs/c4/context.md) — actores y Auth0 (emite tokens; la API los valida localmente con JWKS).
+- [`container.md`](docs/c4/container.md) — api, worker (consumidor + gateway WebSocket), migrate, PostgreSQL, RabbitMQ, Prometheus y Grafana.
+- [`component.md`](docs/c4/component.md) — componentes internos de la API y del worker.
+
+```
+Postman ─► api :3000 ─(transacción: pedido + outbox)─► PostgreSQL
+              │ publisher confirms
+              ▼
+          RabbitMQ ─► worker :3001 ─► orden_cocina ─► WebSocket ─► tablero
+              ▲                                         ▲
+api (cocina/entrega) ─ orden.actualizada ───────────────┘
+Prometheus ◄─ /metrics (api, worker) ─► Grafana :3002
+```
 
 Decisiones técnicas documentadas como ADRs en [`docs/adr/`](docs/adr/):
 1. [Estilo de API (REST + WebSocket)](docs/adr/001-estilo-api.md)
 2. [Base de datos (PostgreSQL)](docs/adr/002-base-de-datos.md)
 3. [Seguridad (Auth0 + OAuth 2.0/JWT + API key)](docs/adr/003-seguridad.md)
 4. [Broker de asincronía (RabbitMQ)](docs/adr/004-broker-asincronia.md)
+5. [Consistencia: outbox transaccional y consumidor idempotente](docs/adr/005-outbox-consistencia.md)
+6. [Observabilidad (pino, Prometheus, Grafana)](docs/adr/006-observabilidad.md)
+
+Contratos asíncronos: [eventos RabbitMQ](docs/eventos.md) y [WebSocket](docs/websocket.md).
 
 Modelo de datos: [`docs/modelo-datos.md`](docs/modelo-datos.md).
 Contrato de API: [`docs/openapi.yaml`](docs/openapi.yaml) (OpenAPI 3.1).
@@ -552,5 +581,10 @@ Ver [`docs/adr/`](docs/adr/).
 
 ## Tag / release y commit de esta entrega
 
-- Tag: `v1.0.0`
-- Commit: 8b3aa05d8e8463ff1a8b62c14aef7604aa1032f3
+| Entrega | Tag | Commit |
+|---|---|---|
+| Entrega 1 | `v1.0.0` | `8b3aa05d8e8463ff1a8b62c14aef7604aa1032f3` |
+| Entrega 2 | Pendiente: nombre a confirmar con la cátedra (`v1.0.0` ya está usado por E1) | Se registra en las notas de la release de GitHub |
+
+Un archivo versionado no puede contener el SHA del mismo commit que lo incluye:
+el SHA evaluable de la Entrega 2 es el que apunta el tag, y figura en la release.

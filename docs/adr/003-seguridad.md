@@ -16,7 +16,7 @@ La consigna exige OAuth 2.0 + JWT con Auth0 (o equivalente) como esquema princip
   - `confirm:pedidos`
   - `admin:productos`
   - `read:cocina`
-  - `write:cocina` (configurado en Auth0; su aplicación en cocina corresponde a E2-07)
+  - `write:cocina` (avanzar el estado de las órdenes de cocina; `write:pedidos` no lo habilita)
 - **Comparación con API key:** se agrega `GET /health-protegido` (o similar) protegido solo con header `x-api-key`, documentado como contraste frente al esquema OAuth 2.0/JWT — no reemplaza la protección de los endpoints de negocio.
 
 ## Alternativas consideradas
@@ -37,5 +37,19 @@ ausente se rechaza el acceso: `401` sin token o `503 AUTH_NO_CONFIGURADA` con Be
 `GET /health-protegido` acepta únicamente API key, comparada con digest SHA-256
 y tiempo constante. La clave no habilita CRUD y un JWT no reemplaza esa clave.
 Los seis scopes están autorizados al cliente principal; la prueba negativa usa
-otro cliente autorizado solo con `read:pedidos`. Autenticación y expiración del
-stream quedan vinculadas a su implementación en E2-07.
+otro cliente autorizado solo con `read:pedidos`.
+
+## Avance E2-07
+
+- `read:cocina` protege `GET /cocina/ordenes` y la suscripción al WebSocket;
+  `write:cocina`, el avance de estados. La entrega del pedido usa `write:pedidos`.
+- **Validación local:** ni la API ni el gateway consultan a Auth0 en cada
+  request. Verifican firma RS256, issuer, audience y expiración con las claves
+  públicas del JWKS, que se descargan y cachean (`express-oauth2-jwt-bearer` en
+  REST y `jose`, su misma librería subyacente, en WebSocket).
+- **Stream:** el token llega en el primer mensaje del WebSocket (el navegador no
+  puede enviar `Authorization` en el handshake y en la URL quedaría en logs). Sin
+  `read:cocina` → cierre `4403`; inválido o vencido → `4401`; al vencer, el
+  servidor cierra la conexión. El tablero no contiene secretos.
+- Ningún token, client secret ni API key aparece en los logs (verificado con
+  tráfico real).

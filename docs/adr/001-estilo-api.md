@@ -15,6 +15,11 @@ Como integración adicional elegimos **WebSocket**, para difundir en tiempo real
 - **Webhook como integración adicional**: más simple de implementar, pero el WebSocket es más vistoso en la defensa (se ve el pedido aparecer en tiempo real) y encaja naturalmente con "mostrar avance de preparación", que pide el enunciado del dominio.
 
 ## Consecuencias
-- Necesitamos un servidor WebSocket (puede vivir en el mismo proceso que la API o en un contenedor aparte).
-- El contrato OpenAPI cubre solo la parte REST; el WebSocket se documenta aparte en el README (eventos que emite, formato de mensaje).
-- Si el tiempo aprieta, el Webhook queda como plan B: es la integración más rápida de armar (un POST simulado a un endpoint que loguea el payload).
+- El contrato OpenAPI cubre solo la parte REST; el WebSocket se documenta en [docs/websocket.md](../websocket.md).
+- El Webhook de notificaciones del diseño de E1 **se descartó**: la consigna exige una sola integración adicional.
+
+## Implementación (E2-07)
+- El gateway WebSocket vive en el **proceso `worker`** (puerto 3001), junto al consumidor de RabbitMQ: `orden.creada` se emite en memoria apenas se persiste la orden, sin otro salto de red.
+- Los cambios de estado los hace la API (otro proceso); llegan al gateway como evento `orden.actualizada` por RabbitMQ, con una cola exclusiva. No se asume memoria compartida.
+- Autenticación del stream: el token va en el primer mensaje (no en la URL, para no quedar en logs), se valida con JWKS igual que en la API, exige `read:cocina` y la conexión se cierra al vencer. Al conectar se envía un snapshot desde la DB, así no hace falta reenviar eventos perdidos.
+- Contra: un único proceso worker atiende el WebSocket. Escalarlo a varias réplicas es posible (cada una tiene su cola exclusiva), pero no se probó.
