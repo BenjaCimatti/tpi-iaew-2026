@@ -9,8 +9,9 @@
   - Lucio Morales Demaria 94289
   - Octavio Testa 94177
 - **Repositorio:** https://github.com/BenjaCimatti/tpi-iaew-2026
-- **Versión evaluable:** tag, release y hash del commit en
-  [Tag / release y commit de esta entrega](#tag--release-y-commit-de-esta-entrega).
+- **Versión evaluable (Entrega 2):** tag/release `v2.0.0`, commit
+  `3ae1a2eb5e5c0b6a3f1cfa362c8eec3272c124a3` (detalle en
+  [Tag / release y commit de esta entrega](#tag--release-y-commit-de-esta-entrega)).
 
 ### Dónde encontrar cada punto de la consigna
 
@@ -679,7 +680,14 @@ privado de Postman están en `.gitignore`.
 | Entrega | Tag | Commit |
 |---|---|---|
 | Entrega 1 | `v1.0.0` | `8b3aa05d8e8463ff1a8b62c14aef7604aa1032f3` |
-| Entrega 2 | Pendiente: nombre a confirmar con la cátedra (`v1.0.0` ya está usado por E1) | Se registra en las notas de la release de GitHub |
+| **Entrega 2** | **`v2.0.0`** | **`3ae1a2eb5e5c0b6a3f1cfa362c8eec3272c124a3`** |
 
-Un archivo versionado no puede contener el SHA del mismo commit que lo incluye:
-el SHA evaluable de la Entrega 2 es el que apunta el tag, y figura en la release.
+Release: https://github.com/BenjaCimatti/tpi-iaew-2026/releases/tag/v2.0.0
+
+`v1.0.0` corresponde a la Entrega 1 y se conserva sin cambios, por eso la
+Entrega 2 usa `v2.0.0`.
+
+Un archivo no puede contener el hash del mismo commit que lo incluye. Por eso
+`3ae1a2e` es el **commit evaluable**, con todo el código, la documentación y las
+evidencias de la Entrega 2. El tag `v2.0.0` apunta al commit inmediatamente
+posterior, que solo agrega estos datos de versión al README.
