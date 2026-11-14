@@ -12,7 +12,10 @@ function fakeOutbox(count) {
   const client = {
     outbox: {
       async findMany({ take }) { return rows.filter((row) => !row.publicadoEn).slice(0, take); },
-      async update({ where, data }) { Object.assign(rows.find((row) => row.id === where.id), data); },
+      async updateMany({ where, data }) {
+        for (const row of rows.filter((r) => where.id.in.includes(r.id))) Object.assign(row, data);
+        return { count: where.id.in.length };
+      },
     },
   };
   return { rows, client };
@@ -61,4 +64,12 @@ test('outbox: con broker caído o sin confirmación conserva los eventos pendien
   for (let i = 0; i < 50 && rows.some((row) => !row.publicadoEn); i++) await new Promise((resolve) => setTimeout(resolve, 10));
   await outbox.stop();
   assert.ok(rows.every((row) => row.publicadoEn instanceof Date));
+});
+
+test('outbox: si falla una confirmación del lote, marca solo los confirmados', async () => {
+  const { rows, client } = fakeOutbox(3);
+  const broker = { ready: true, async publish(_e, _r, content) { if (JSON.parse(content).orden === 1) throw new Error('nack'); } };
+  const outbox = createOutboxPublisher(client, broker, logger);
+  await assert.rejects(outbox.publishPending(), /nack/);
+  assert.deepEqual(rows.map((row) => row.publicadoEn instanceof Date), [true, false, true]);
 });

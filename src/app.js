@@ -12,10 +12,12 @@ import { errorHandler, HttpError } from './http/errors.js';
 import { UUID } from './http/validation.js';
 import { createAuthorization } from './http/authorization.js';
 import { requireApiKey } from './http/api-key.js';
+import { httpObservability, metricsHandler } from './observability/metrics.js';
 
 // onOutbox: aviso al publicador tras cada transacción que escribe en outbox.
 // tablero: el worker sirve la página del tablero de cocina.
-export function createApp(checkHealth, logger, { client, authorize = createAuthorization(), apiKey, onOutbox, tablero = false } = {}) {
+// metrics: métricas Prometheus del proceso (GET /metrics).
+export function createApp(checkHealth, logger, { client, authorize = createAuthorization(), apiKey, onOutbox, tablero = false, metrics } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.use((request, response, next) => {
@@ -24,14 +26,16 @@ export function createApp(checkHealth, logger, { client, authorize = createAutho
     response.set('x-correlation-id', request.correlationId);
     next(supplied && !UUID.test(supplied) ? new HttpError(400, 'ENTRADA_INVALIDA', 'x-correlation-id debe ser UUID') : undefined);
   });
+  app.use(httpObservability(metrics, logger));
   app.use(express.json({ limit: '64kb' }));
   app.get(['/', '/health'], healthController(checkHealth));
+  if (metrics) app.get('/metrics', metricsHandler(metrics));
   if (tablero) app.get('/tablero', (_request, response) => response.sendFile(fileURLToPath(new URL('./public/tablero.html', import.meta.url))));
   if (client) {
     app.get('/health-protegido', requireApiKey(apiKey), healthController(checkHealth));
     app.use('/productos', productoController(createProductoService(client), authorize));
     const cocina = createCocinaApiService(client, { onEvento: onOutbox });
-    app.use('/pedidos', pedidoController(createPedidoService(client, { onConfirmed: onOutbox }), authorize, cocina));
+    app.use('/pedidos', pedidoController(createPedidoService(client, { onConfirmed: onOutbox }), authorize, cocina, metrics));
     app.use('/cocina', cocinaController(cocina, authorize));
   }
   app.use((_request, response) => {

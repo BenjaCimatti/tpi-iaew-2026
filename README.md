@@ -140,7 +140,7 @@ Referencias: [API y firma](https://auth0.com/docs/get-started/apis/api-settings)
 
 Los valores de ejemplo de PostgreSQL y RabbitMQ permiten levantar API y worker.
 Las conexiones dentro de Docker usan `db` y `broker`, no `localhost`. Los puertos
-`3000`, `3001`, `5432`, `5672` y `15672` deben estar libres en el equipo.
+`3000`, `3001`, `3002`, `5432`, `5672`, `9090` y `15672` deben estar libres en el equipo.
 
 Auth0 sigue siendo un **servicio externo**: Compose no lo despliega. La obtención
 de tokens y la consulta de JWKS requieren conectividad con Auth0. Los endpoints
@@ -161,7 +161,7 @@ dependencias están disponibles); ausente/incorrecta devuelve `401`. Esa clave n
    docker compose ps
    ```
 
-   Deben aparecer `api`, `worker`, `db` y `broker` en ejecución y `healthy`;
+   Deben aparecer `api`, `worker`, `db` y `broker` en ejecución y `healthy`, y `prometheus` y `grafana` en ejecución;
    si todavía están en `starting`, esperar y repetir la
    consulta. Para diagnosticar errores, usar `docker compose logs`.
 
@@ -214,12 +214,12 @@ recibir `SIGTERM`/`SIGINT`. El puerto `3001` es del proceso worker/gateway: sirv
 **Alcance de la comprobación:** el healthcheck solo comprueba conexiones a
 DB/broker. El flujo de negocio (confirmación → RabbitMQ → orden de cocina) se
 describe en [Confirmación y flujo asincrónico](#confirmación-y-flujo-asincrónico--e2-05e2-06).
-El tablero WebSocket se describe en [Cocina y tablero](#cocina-y-tablero-en-tiempo-real--e2-07);
-las métricas siguen pendientes en E2-08.
+El tablero WebSocket se describe en [Cocina y tablero](#cocina-y-tablero-en-tiempo-real--e2-07)
+y las métricas en [Observabilidad](#observabilidad-logs-métricas-y-dashboard--e2-08).
 
 Evidencia: [verificación de E2-01](docs/verificacion-e2-01.md),
 [E2-05](docs/verificacion-e2-05.md), [E2-06](docs/verificacion-e2-06.md),
-[E2-07](docs/verificacion-e2-07.md) y
+[E2-07](docs/verificacion-e2-07.md), [E2-08](docs/verificacion-e2-08.md) y
 [verificación de E2-02](docs/verificacion-e2-02.md).
 Ver también [verificación de E2-03](docs/verificacion-e2-03.md).
 Seguridad: [verificación de E2-04](docs/verificacion-e2-04.md).
@@ -406,6 +406,49 @@ conexión se cierra al vencer. Sin token, con token inválido o sin `read:cocina
 la conexión se rechaza (`4408`/`4401`/`4403`). Al reconectar, el tablero recibe
 el estado actual desde la DB. Contrato completo: [docs/websocket.md](docs/websocket.md).
 
+## Observabilidad: logs, métricas y dashboard — E2-08
+
+| Servicio | URL | Acceso |
+|---|---|---|
+| Grafana | [http://localhost:3002](http://localhost:3002) | Lectura sin login; admin con `GRAFANA_ADMIN_USER`/`GRAFANA_ADMIN_PASSWORD` (`admin`/`admin` por defecto) |
+| Prometheus | [http://localhost:9090](http://localhost:9090) | Sin autenticación (solo local) |
+| Métricas | `http://localhost:3000/metrics`, `http://localhost:3001/metrics` | Formato Prometheus |
+
+El dashboard **Pedidos en Restaurante — API** se provisiona desde
+[`observability/`](observability/) y abre como inicio de Grafana. Muestra:
+
+- **Latencia p95** (`histogram_quantile` sobre `http_request_duration_seconds`).
+- **Throughput** en requests/segundo.
+- **Error rate** = respuestas **5xx** / total. Los 4xx (validación, 401/403 y 409
+  de negocio) son rechazos esperados y se muestran aparte.
+- Ventana de cálculo de **1 minuto** (`rate[1m]`), con scrape cada 5 s. Se
+  excluyen `/health`, `/metrics`, `/` y rutas inexistentes, para que los
+  healthchecks de Docker no distorsionen los indicadores.
+- Además: percentiles por ruta, confirmaciones aceptadas/rechazadas por código,
+  eventos publicados/procesados, outbox pendiente, tableros conectados y
+  conexión a RabbitMQ.
+
+Las etiquetas usan la **ruta normalizada** (`/pedidos/:pedidoId`), nunca el path
+con UUID. Captura bajo carga: [docs/img/dashboard-carga.png](docs/img/dashboard-carga.png).
+
+**Logs JSON** (pino) en API y worker: `time` ISO, `level`, `servicio`,
+`operacion`, `resultado`, `duracionMs` y `correlationId`. Cada request HTTP se
+registra al terminar; `/health` y `/metrics` solo en nivel `debug`. El
+`correlationId` del header `x-correlation-id` (o el generado) viaja en el evento
+y aparece en los logs del worker:
+
+```bash
+docker compose logs api worker --no-log-prefix | grep <correlationId>
+```
+
+```json
+{"level":"info","servicio":"api","operacion":"POST /pedidos","metodo":"POST","ruta":"/pedidos","status":201,"resultado":"ok","duracionMs":10.4,"correlationId":"c0f5bef9-3640-4cf4-aba8-b2724ec3f196"}
+{"level":"info","servicio":"api","operacion":"POST /pedidos/:pedidoId/confirmar","metodo":"POST","ruta":"/pedidos/:pedidoId/confirmar","status":200,"resultado":"ok","duracionMs":8.7,"correlationId":"c0f5bef9-3640-4cf4-aba8-b2724ec3f196"}
+{"level":"info","servicio":"api","operacion":"outbox.publicar","resultado":"publicado","eventId":"cdcf57e9-84f5-4b11-9447-58fcd145ed14","eventType":"pedido.confirmado","pedidoId":"fe8ddb3a-2482-4cb8-a2ac-d2f72efc03cc","correlationId":"c0f5bef9-3640-4cf4-aba8-b2724ec3f196","lote":1,"duracionMs":6}
+{"level":"info","servicio":"worker","operacion":"cocina.consumir","messageId":"cdcf57e9-84f5-4b11-9447-58fcd145ed14","intento":1,"eventId":"cdcf57e9-84f5-4b11-9447-58fcd145ed14","pedidoId":"fe8ddb3a-2482-4cb8-a2ac-d2f72efc03cc","correlationId":"c0f5bef9-3640-4cf4-aba8-b2724ec3f196","resultado":"orden_creada","ordenId":"2a647303-
+{"level":"info","servicio":"worker","operacion":"ws.difundir","resultado":"enviado","eventType":"orden.creada","eventId":"cdcf57e9-84f5-4b11-9447-58fcd145ed14","pedidoId":"fe8ddb3a-2482-4cb8-a2ac-d2f72efc03cc","correlationId":"c0f5bef9-3640-4cf4-aba8-b2724ec3f196","clientes":0}
+```
+
 ## Pruebas y desarrollo
 
 Después de construir las imágenes, ejecutar las pruebas con la misma versión de
@@ -463,7 +506,10 @@ Ver [`docs/adr/`](docs/adr/).
 
 - E2-01 a E2-07 incorporan infraestructura, datos, CRUD protegidos con Auth0, API key,
   confirmación con outbox, consumidor de cocina, endpoints de cocina y tablero
-  WebSocket. Métricas/dashboard (E2-08) y carga (E2-09) siguen pendientes.
+  WebSocket, logs JSON correlacionados, métricas Prometheus y dashboard Grafana.
+  La prueba de carga formal (E2-09) sigue pendiente.
+- `/metrics`, Prometheus y la lectura anónima de Grafana no tienen autenticación:
+  son adecuados para el entorno local, no para exponerlos públicamente.
 - El tablero solo muestra órdenes y estados; los cambios se hacen por la API
   (Postman). Un único proceso worker sirve el WebSocket: escalarlo a varias
   réplicas funcionaría (cada una tiene su cola exclusiva), pero no se probó.

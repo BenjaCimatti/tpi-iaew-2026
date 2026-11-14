@@ -9,7 +9,13 @@ import { EXCHANGE } from '../messaging/topology.js';
 // la confirmación y el UPDATE, el evento se vuelve a publicar: el consumidor es
 // idempotente por pedidoId. La confirmación del pedido nunca se revierte por un
 // fallo del broker.
-export function createOutboxPublisher(client, broker, logger, { intervalMs = 1000, maxIntervalMs = 15000, batch = 50 } = {}) {
+// Por lote: se publican todos los eventos en orden sobre el canal, se esperan
+// juntas las confirmaciones y se marcan con un solo UPDATE los confirmados.
+// (Publicar y confirmar de a uno limitaba el ritmo: bajo carga el outbox llegó a
+// 303 pendientes con 6 s de demora.) Si alguno no se confirma, queda pendiente y
+// se reintenta; puede reenviarse fuera de orden, por eso los consumidores son
+// idempotentes y el tablero ordena por actualizadoEn.
+export function createOutboxPublisher(client, broker, logger, { intervalMs = 1000, maxIntervalMs = 15000, batch = 200, onPublicado = () => {} } = {}) {
   let stopped = false;
   let wakeUp = () => {};
   let loop;
@@ -21,22 +27,29 @@ export function createOutboxPublisher(client, broker, logger, { intervalMs = 100
       orderBy: [{ occurredAt: 'asc' }, { id: 'asc' }],
       take: batch,
     });
-    for (const evento of eventos) {
-      if (stopped) break;
-      const inicio = performance.now();
-      await broker.publish(EXCHANGE, evento.eventType, Buffer.from(JSON.stringify(evento.payload)), {
-        messageId: evento.id,
-        type: evento.eventType,
-        correlationId: evento.correlationId,
-        timestamp: Math.floor(evento.occurredAt.getTime() / 1000),
-        headers: { 'x-correlation-id': evento.correlationId, 'x-event-version': evento.version },
-      });
-      await client.outbox.update({ where: { id: evento.id }, data: { publicadoEn: new Date() } });
+    if (!eventos.length || stopped) return 0;
+    const inicio = performance.now();
+    const resultados = await Promise.allSettled(eventos.map((evento) => broker.publish(EXCHANGE, evento.eventType, Buffer.from(JSON.stringify(evento.payload)), {
+      messageId: evento.id,
+      type: evento.eventType,
+      correlationId: evento.correlationId,
+      timestamp: Math.floor(evento.occurredAt.getTime() / 1000),
+      headers: { 'x-correlation-id': evento.correlationId, 'x-event-version': evento.version },
+    })));
+    const publicados = eventos.filter((_, i) => resultados[i].status === 'fulfilled');
+    if (publicados.length) {
+      await client.outbox.updateMany({ where: { id: { in: publicados.map((evento) => evento.id) } }, data: { publicadoEn: new Date() } });
+    }
+    const duracionMs = Math.round(performance.now() - inicio);
+    for (const evento of publicados) {
+      onPublicado(evento);
       logger.info({
         operacion: 'outbox.publicar', resultado: 'publicado', eventId: evento.id, eventType: evento.eventType,
-        pedidoId: evento.pedidoId, correlationId: evento.correlationId, duracionMs: Math.round(performance.now() - inicio),
+        pedidoId: evento.pedidoId, correlationId: evento.correlationId, lote: eventos.length, duracionMs,
       }, 'Evento publicado en RabbitMQ');
     }
+    const fallo = resultados.find((resultado) => resultado.status === 'rejected');
+    if (fallo) throw fallo.reason;
     return eventos.length;
   }
 

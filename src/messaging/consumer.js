@@ -12,7 +12,8 @@ const PREFETCH = 10;
 //   Superados MAX_REINTENTOS → NACK sin reencolar → DLQ. Se usa un contador
 //   propio porque en RabbitMQ 4 un NACK con requeue no incrementa
 //   x-delivery-count (comprobado), y el límite de la cola no se aplicaría.
-export function createPedidoConfirmadoConsumer(cocina, logger, { onOrdenCreada = () => {}, backoffMs = 1000, maxBackoffMs = 10000 } = {}) {
+// onResultado(resultado): para métricas (orden_creada, duplicado, rechazado_dlq, reintento, agotado_dlq).
+export function createPedidoConfirmadoConsumer(cocina, logger, { onOrdenCreada = () => {}, onResultado = () => {}, backoffMs = 1000, maxBackoffMs = 10000 } = {}) {
   async function handle(channel, message) {
     if (!message) return; // RabbitMQ canceló el consumidor; el broker reconectará.
     const inicio = performance.now();
@@ -37,14 +38,17 @@ export function createPedidoConfirmadoConsumer(cocina, logger, { onOrdenCreada =
       const duracionMs = Math.round(performance.now() - inicio);
       if (error instanceof SyntaxError || error instanceof EventoInvalido) {
         settle(() => channel.nack(message, false, false));
+        onResultado('rechazado_dlq');
         logger.warn({ ...contexto, resultado: 'rechazado_dlq', codigo: error.codigo ?? 'JSON_INVALIDO', duracionMs }, 'Evento rechazado y enviado a la DLQ');
         return;
       }
       if (intento > MAX_REINTENTOS) {
         settle(() => channel.nack(message, false, false));
+        onResultado('agotado_dlq');
         logger.error({ ...contexto, resultado: 'agotado_dlq', code: error.code, duracionMs }, 'Reintentos agotados; mensaje enviado a la DLQ');
         return;
       }
+      onResultado('reintento');
       logger.error({ ...contexto, resultado: 'reintento', code: error.code, duracionMs }, 'Fallo transitorio al procesar el evento; se reintentará');
       await delay(Math.min(backoffMs * 2 ** (intento - 1), maxBackoffMs), undefined, { ref: false });
       try {
@@ -58,6 +62,7 @@ export function createPedidoConfirmadoConsumer(cocina, logger, { onOrdenCreada =
     }
     const { creada, orden } = resultado;
     settle(() => channel.ack(message));
+    onResultado(creada ? 'orden_creada' : 'duplicado');
     logger.info({ ...contexto, resultado: creada ? 'orden_creada' : 'duplicado', ordenId: orden.id, duracionMs: Math.round(performance.now() - inicio) },
       creada ? 'Orden de cocina creada' : 'Evento repetido: la orden ya existía');
     if (!creada) return;
