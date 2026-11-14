@@ -9,6 +9,26 @@
   - Lucio Morales Demaria 94289
   - Octavio Testa 94177
 - **Repositorio:** https://github.com/BenjaCimatti/tpi-iaew-2026
+- **Versión evaluable:** tag, release y hash del commit en
+  [Tag / release y commit de esta entrega](#tag--release-y-commit-de-esta-entrega).
+
+### Dónde encontrar cada punto de la consigna
+
+| Punto | Sección |
+|---|---|
+| Requisitos | [Requisitos previos](#requisitos-previos) |
+| Variables de entorno | [Variables de entorno](#variables-de-entorno) y [`.env.example`](.env.example) |
+| Configuración de identidad | [Configuración de Auth0](#configuración-de-auth0--e2-04) |
+| Arranque | [Ejecución local](#ejecución-local) |
+| Datos iniciales | [Base de datos, migraciones y datos de demo](#base-de-datos-migraciones-y-datos-de-demo) |
+| Endpoints | [Endpoints principales](#endpoints-principales) y [`docs/openapi.yaml`](docs/openapi.yaml) |
+| Pruebas | [Colección Postman y prueba de carga](#colección-postman-y-prueba-de-carga--e2-09) y [Pruebas automatizadas](#pruebas-y-desarrollo) |
+| Flujo asincrónico | [Confirmación y flujo asincrónico](#confirmación-y-flujo-asincrónico--e2-05e2-06) |
+| Integración adicional | [Integración adicional: WebSocket](#integración-adicional-tablero-de-cocina-por-websocket--e2-07) |
+| Observabilidad | [Observabilidad](#observabilidad-logs-métricas-y-dashboard--e2-08) |
+| Decisiones | [Decisiones técnicas principales](#decisiones-técnicas-principales) |
+| Limitaciones | [Limitaciones conocidas](#limitaciones-conocidas-y-mejoras-futuras) |
+| Evidencias, diagramas y reportes | [Evidencias](#evidencias-diagramas-y-reportes) |
 
 ## Descripción del problema y alcance
 
@@ -253,7 +273,7 @@ recibir `SIGTERM`/`SIGINT`. El puerto `3001` es del proceso worker/gateway: sirv
 **Alcance de la comprobación:** el healthcheck solo comprueba conexiones a
 DB/broker. El flujo de negocio (confirmación → RabbitMQ → orden de cocina) se
 describe en [Confirmación y flujo asincrónico](#confirmación-y-flujo-asincrónico--e2-05e2-06).
-El tablero WebSocket se describe en [Cocina y tablero](#cocina-y-tablero-en-tiempo-real--e2-07)
+El tablero WebSocket se describe en [Integración adicional](#integración-adicional-tablero-de-cocina-por-websocket--e2-07)
 y las métricas en [Observabilidad](#observabilidad-logs-métricas-y-dashboard--e2-08).
 
 Evidencia: [verificación de E2-01](docs/verificacion-e2-01.md),
@@ -329,6 +349,42 @@ Usar **GET** y **Authorization → No Auth**:
 Estas consultas comprueban conexiones, no el contenido de las tablas. Las
 verificaciones de migraciones, seed e integridad se hacen con los comandos de DB
 y pruebas de la sección siguiente.
+
+## Endpoints principales
+
+API REST en `http://localhost:3000`. Contrato completo, con schemas, ejemplos y
+errores: [`docs/openapi.yaml`](docs/openapi.yaml) (OpenAPI 3.1). Todas las rutas
+de negocio requieren `Authorization: Bearer <JWT de Auth0>` con el scope indicado.
+Los errores responden `{"codigo", "mensaje", "correlationId"}`.
+
+| Método y ruta | Qué hace | Permiso |
+|---|---|---|
+| `GET /health`, `GET /` | Salud de la API y sus dependencias | Público |
+| `GET /health-protegido` | Salud, solo para comparar con API key | Header `x-api-key` |
+| `GET /metrics` | Métricas Prometheus | Público (solo local) |
+| `GET /productos`, `GET /productos/{productoId}` | Listar y consultar productos | `read:pedidos` |
+| `POST /productos` | Crear producto | `admin:productos` |
+| `PUT /productos/{productoId}` | Reemplazar producto | `admin:productos` |
+| `PATCH /productos/{productoId}` | Modificar solo el precio | `admin:productos` |
+| `DELETE /productos/{productoId}` | Eliminar producto (409 si está en un pedido) | `admin:productos` |
+| `GET /pedidos[?estado=]`, `GET /pedidos/{pedidoId}` | Listar (filtro por estado) y consultar pedidos | `read:pedidos` |
+| `POST /pedidos` | Crear pedido (el servidor calcula precios y total) | `write:pedidos` |
+| `PUT /pedidos/{pedidoId}` | Editar pedido pendiente | `write:pedidos` |
+| `DELETE /pedidos/{pedidoId}` | Eliminar pedido pendiente | `write:pedidos` |
+| `POST /pedidos/{pedidoId}/cancelar` | Cancelar pedido pendiente | `write:pedidos` |
+| `POST /pedidos/{pedidoId}/confirmar` | Confirmación multi-paso (genera el evento para cocina) | `confirm:pedidos` |
+| `POST /pedidos/{pedidoId}/entregar` | Entregar pedido listo | `write:pedidos` |
+| `GET /cocina/ordenes[?estado=]`, `GET /cocina/ordenes/{ordenId}` | Listar y consultar órdenes de cocina | `read:cocina` |
+| `PATCH /cocina/ordenes/{ordenId}` | Avanzar estado: `en_preparacion` → `lista` | `write:cocina` |
+
+Worker en `http://localhost:3001`: `GET /health`, `GET /metrics`, `GET /tablero`
+(página del tablero) y WebSocket `ws://localhost:3001/ws/cocina` (`read:cocina`,
+ver [docs/websocket.md](docs/websocket.md)).
+
+Estados del pedido: `pendiente` → `confirmado` → `en_preparacion` → `listo` →
+`entregado`, o `cancelado` (solo desde `pendiente`). Ejemplos de uso: la
+[colección Postman](postman/pedidos-restaurante.postman_collection.json) cubre
+todas las rutas.
 
 ## CRUD y Postman — E2-03
 
@@ -424,7 +480,11 @@ La API registra `outbox.publicar` y el worker `cocina.consumir`, ambos con
 En RabbitMQ Management ([http://localhost:15672](http://localhost:15672)) se ven
 la cola de cocina, su consumidor y la DLQ.
 
-## Cocina y tablero en tiempo real — E2-07
+## Integración adicional: tablero de cocina por WebSocket — E2-07
+
+La consigna pide una integración adicional (webhook, gRPC o WebSocket); se eligió
+**WebSocket** ([ADR 001](docs/adr/001-estilo-api.md)) para mostrar el avance de
+cocina en tiempo real.
 
 | Operación | Ruta | Scope |
 |---|---|---|
@@ -562,14 +622,24 @@ ejecuciones a `localhost`; conservar `db`/`broker` para las ejecuciones en Compo
 
 ## Decisiones técnicas principales
 
-Ver [`docs/adr/`](docs/adr/).
+Cada decisión está registrada como ADR en [`docs/adr/`](docs/adr/), con contexto,
+alternativas y consecuencias:
+
+| ADR | Decisión | Motivo principal |
+|---|---|---|
+| [001](docs/adr/001-estilo-api.md) | REST + OpenAPI 3.1; integración adicional WebSocket, servida por el worker | El tablero necesita ver los cambios en vivo; el webhook del diseño de E1 se descartó |
+| [002](docs/adr/002-base-de-datos.md) | PostgreSQL con Prisma ORM y Prisma Migrate | Entidades relacionadas y confirmación atómica con restricciones y bloqueos |
+| [003](docs/adr/003-seguridad.md) | Auth0, `client_credentials`, JWT RS256 validado localmente con JWKS, scopes por operación; API key solo en un endpoint de comparación | Requisito de la consigna; la API no consulta a Auth0 en cada request |
+| [004](docs/adr/004-broker-asincronia.md) | RabbitMQ 4.3 con colas quorum, DLQ y publisher confirms | Liviano, ejecutable 100 % local, con panel para la demo |
+| [005](docs/adr/005-outbox-consistencia.md) | Outbox transaccional y consumidor idempotente | Una transacción SQL no incluye al broker; se garantiza efecto idempotente con entrega al menos una vez |
+| [006](docs/adr/006-observabilidad.md) | Logs JSON con correlation ID, prom-client, Prometheus y Grafana provisionados | p95, throughput y error rate reproducibles con Compose |
 
 ## Limitaciones conocidas y mejoras futuras
 
-- E2-01 a E2-07 incorporan infraestructura, datos, CRUD protegidos con Auth0, API key,
-  confirmación con outbox, consumidor de cocina, endpoints de cocina y tablero
-  WebSocket, logs JSON correlacionados, métricas Prometheus y dashboard Grafana.
-  Colección Postman de 38 requests y prueba de carga JMeter con reporte (E2-09).
+- No hay frontend completo para mozos o administradores: se opera con Postman
+  (fuera del mínimo de la consigna).
+- La prueba de carga corrió con el generador y el sistema en la misma máquina:
+  los resultados son una referencia local.
 - `GET /cocina/ordenes` no tiene paginación: con muchos datos acumulados la
   respuesta crece (ver [docs/carga.md](docs/carga.md#limitaciones)).
 - `/metrics`, Prometheus y la lectura anónima de Grafana no tienen autenticación:
@@ -582,6 +652,27 @@ Ver [`docs/adr/`](docs/adr/).
   desde RabbitMQ Management.
 - Con la API y el worker levantados, ejecutar `test:api` hace que estos procesen
   los eventos de prueba; la limpieza del test lo contempla.
+
+## Evidencias, diagramas y reportes
+
+Todo está versionado en el repositorio (y por lo tanto en el ZIP de la release):
+
+| Qué | Dónde |
+|---|---|
+| Diagramas C4 (Context, Container, Component) | [`docs/c4/`](docs/c4/) (Mermaid; PNG y fuentes UMLet del diseño de E1 en `docs/c4/imgs` y `docs/c4/umlet-files`) |
+| ADRs | [`docs/adr/`](docs/adr/) |
+| Contrato REST | [`docs/openapi.yaml`](docs/openapi.yaml) (validado con Redocly) |
+| Contratos asíncronos | [`docs/eventos.md`](docs/eventos.md) (RabbitMQ) y [`docs/websocket.md`](docs/websocket.md) |
+| Modelo de datos | [`docs/modelo-datos.md`](docs/modelo-datos.md), [`prisma/schema.prisma`](prisma/schema.prisma) y migraciones SQL en `prisma/migrations/` |
+| Verificación por bloque | [E2-01](docs/verificacion-e2-01.md), [E2-02](docs/verificacion-e2-02.md), [E2-03](docs/verificacion-e2-03.md), [E2-04](docs/verificacion-e2-04.md), [E2-05](docs/verificacion-e2-05.md), [E2-06](docs/verificacion-e2-06.md), [E2-07](docs/verificacion-e2-07.md), [E2-08](docs/verificacion-e2-08.md), [E2-09](docs/verificacion-e2-09.md) |
+| Colección Postman y entorno de ejemplo | [`postman/`](postman/) (38 requests / 59 assertions, sin fallos con Auth0 real) |
+| Reporte de carga | [`docs/carga.md`](docs/carga.md); plan [`load/pedidos.jmx`](load/pedidos.jmx); resumen y muestras crudas en [`load/resultados/20261114-170056/`](load/resultados/20261114-170056/) |
+| Capturas del dashboard bajo carga | [`docs/img/dashboard-jmeter.png`](docs/img/dashboard-jmeter.png), [`docs/img/dashboard-carga.png`](docs/img/dashboard-carga.png) y [`docs/img/dashboard-carga-antes.png`](docs/img/dashboard-carga-antes.png) |
+| Configuración de observabilidad | [`observability/`](observability/) (Prometheus, datasource y dashboard de Grafana) |
+| Configuración de ejemplo | [`.env.example`](.env.example) y [`postman/auth0.example.postman_environment.json`](postman/auth0.example.postman_environment.json), sin secretos |
+
+No se versionan secretos reales, tokens ni credenciales: `.env` y el entorno
+privado de Postman están en `.gitignore`.
 
 ## Tag / release y commit de esta entrega
 
