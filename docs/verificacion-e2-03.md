@@ -22,7 +22,7 @@ docker compose run --rm --no-deps -T -v "$PWD/test:/app/test:ro" api npm test
 docker compose run --rm --no-deps -T -v "$PWD/test:/app/test:ro" api npm run test:api
 ```
 
-Colección: [Postman E2-03](../postman/e2-03.postman_collection.json).
+Colección: [colección Postman](../postman/pedidos-restaurante.postman_collection.json) (antes `e2-03.postman_collection.json`).
 **Actualización E2-04:** tenant/M2M, token real y `tokenUrl` verificados; [evidencia](verificacion-e2-04.md).
 La API normal exige JWT: sin token `401`; con Bearer y Auth0 sin configurar, `503`.
 API key implementada en E2-04. Confirmación, cocina y publicación siguen en sus bloques.

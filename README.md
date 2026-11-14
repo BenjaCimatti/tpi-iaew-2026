@@ -118,18 +118,18 @@ cp .env.example .env
    con `grant_type: client_credentials`. Debe devolver `200`, `access_token`,
    `token_type: Bearer` y `expires_in`. El script guarda el token sin imprimirlo.
    Después de cambiar `.env`, recrear API con `docker compose up -d api`.
-   Ejecutar las requests 01–16 para CRUD y 17–20 para API key.
+   Ejecutar el resto de la colección en orden (ver [Postman](#colección-postman-y-prueba-de-carga--e2-09)).
 
 Para comprobar `403`, crear otro cliente M2M autorizado **únicamente** con
-`read:pedidos`. Duplicar el entorno privado, usar las credenciales de ese cliente
-y ejecutar **00**, **03 Listar productos** (`200`) y **02 Crear producto**
-(`403`). Volver al entorno original y ejecutar **00** antes del recorrido completo.
+`read:pedidos` y completar `auth0ReadonlyClientId`/`auth0ReadonlyClientSecret` en
+el entorno privado: las requests **36–37** obtienen ese token y verifican el `403`
+al confirmar un pedido. Sin esas variables, 36–37 se omiten.
 Cambiar solo `auth0Scopes` no garantiza un token reducido: en el tenant probado,
 Auth0 devuelve todos los permisos autorizados al cliente. No compartir ni
 versionar Client Secret o access tokens; los JSON de ejemplo conservan valores vacíos.
 
-El tenant real y el recorrido completo ya se verificaron: **21 requests y
-30 assertions sin fallos**. Además, el cliente de solo lectura consulta con `200`
+El tenant real y el recorrido completo ya se verificaron: **38 requests y
+59 assertions sin fallos** (E2-09). Además, el cliente de solo lectura consulta con `200`
 y recibe `403` al intentar crear un producto. El detalle de pruebas negativas está en
 [verificación E2-04](docs/verificacion-e2-04.md).
 Referencias: [API y firma](https://auth0.com/docs/get-started/apis/api-settings),
@@ -324,9 +324,10 @@ retenidos y toma el precio actual de productos nuevos. Los precios unitarios,
 total y estado enviados en el body no alteran los valores calculados por el
 servidor. No repetir el mismo producto en los ítems.
 
-Importar [la colección E2-03/E2-04](postman/e2-03.postman_collection.json) en Postman,
-seleccionar el entorno privado y ejecutarla en orden. Contiene **21 requests**:
-**00 para obtener token Auth0**, **01–16 para ambos CRUD** y **17–20 para API key**.
+Importar [la colección](postman/pedidos-restaurante.postman_collection.json) en Postman,
+seleccionar el entorno privado y ejecutarla en orden (detalle en
+[Colección Postman y prueba de carga](#colección-postman-y-prueba-de-carga--e2-09)).
+Las requests **00–20** cubren token, ambos CRUD y API key.
 Comprueba persistencia, precios históricos, conflicto de borrado y rechazos. `baseUrl`
 es `http://localhost:3000`; `mesaId` usa la mesa 1 del seed. La colección captura
 los IDs de los recursos que crea y los elimina al terminar el recorrido exitoso.
@@ -405,6 +406,34 @@ mensaje del WebSocket (no en la URL), se valida igual que en la API y la
 conexión se cierra al vencer. Sin token, con token inválido o sin `read:cocina`,
 la conexión se rechaza (`4408`/`4401`/`4403`). Al reconectar, el tablero recibe
 el estado actual desde la DB. Contrato completo: [docs/websocket.md](docs/websocket.md).
+
+## Colección Postman y prueba de carga — E2-09
+
+[`postman/pedidos-restaurante.postman_collection.json`](postman/pedidos-restaurante.postman_collection.json),
+**38 requests / 59 assertions**, sin datos creados a mano (usa el seed y captura
+los IDs que crea):
+
+| Requests | Cobertura |
+|---|---|
+| 00 | Token Auth0 (`client_credentials`) |
+| 01–16 | CRUD de productos y pedidos, precios históricos, conflicto de borrado, filtro inválido, `401` sin token |
+| 17–20 | API key válida/ausente/inválida y separación del JWT |
+| 21–29 | Confirmación, reconfirmación `409`, **espera acotada de la orden creada por el worker** (hasta 10 × 500 ms), salto de estado `409`, cocina `en_preparacion`/`lista`, cancelación rechazada y entrega |
+| 30–35 | Pedido inexistente `404`, cantidad inválida `400`, producto no disponible `409`, token alterado `401` |
+| 36–37 | `403` con el cliente de solo lectura (opcional) |
+
+Con Newman, desde la raíz:
+
+```bash
+npx newman@6.2.3 run postman/pedidos-restaurante.postman_collection.json   -e postman/auth0.local.postman_environment.json
+```
+
+**Prueba de carga (JMeter):** `bash load/run.sh` (20 usuarios, 20 s de rampa,
+120 s; en Windows usar Git Bash). Obtiene el token antes de la carga y ejecuta
+[`load/pedidos.jmx`](load/pedidos.jmx) con `alpine/jmeter:5.6.3` dentro de la red
+de Compose. Resultado de referencia: **86 501 requests, 0 % de errores, p95 42 ms,
+721 req/s**, todas las confirmaciones con orden de cocina. Escenario, objetivos
+propios, interpretación y limitaciones: [docs/carga.md](docs/carga.md).
 
 ## Observabilidad: logs, métricas y dashboard — E2-08
 
@@ -507,7 +536,9 @@ Ver [`docs/adr/`](docs/adr/).
 - E2-01 a E2-07 incorporan infraestructura, datos, CRUD protegidos con Auth0, API key,
   confirmación con outbox, consumidor de cocina, endpoints de cocina y tablero
   WebSocket, logs JSON correlacionados, métricas Prometheus y dashboard Grafana.
-  La prueba de carga formal (E2-09) sigue pendiente.
+  Colección Postman de 38 requests y prueba de carga JMeter con reporte (E2-09).
+- `GET /cocina/ordenes` no tiene paginación: con muchos datos acumulados la
+  respuesta crece (ver [docs/carga.md](docs/carga.md#limitaciones)).
 - `/metrics`, Prometheus y la lectura anónima de Grafana no tienen autenticación:
   son adecuados para el entorno local, no para exponerlos públicamente.
 - El tablero solo muestra órdenes y estados; los cambios se hacen por la API

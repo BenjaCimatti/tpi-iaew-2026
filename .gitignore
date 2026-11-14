@@ -33,3 +33,8 @@ node_modules/
 src/generated/
 dist/
 build/
+
+# Prueba de carga: se versionan el resumen y el .jtl comprimido; el reporte HTML se regenera.
+load/resultados/*/resultados.jtl
+load/resultados/*/reporte/
+load/resultados/*/jmeter.log

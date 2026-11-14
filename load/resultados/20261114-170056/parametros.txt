@@ -1,0 +1,7 @@
+fecha=20261114-170056
+commit=945e50c+cambios
+usuarios=20
+rampup_s=20
+duracion_s=120
+host=api:3000 (red interna de Compose)
+jmeter=alpine/jmeter:5.6.3
