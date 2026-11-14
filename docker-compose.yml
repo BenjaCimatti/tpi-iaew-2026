@@ -41,6 +41,9 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - DATABASE_URL=${DATABASE_URL}
       - RABBITMQ_URL=${RABBITMQ_URL}
+      # El gateway WebSocket valida localmente los JWT (JWKS); no recibe secretos M2M.
+      - AUTH0_DOMAIN=${AUTH0_DOMAIN}
+      - AUTH0_AUDIENCE=${AUTH0_AUDIENCE}
     depends_on:
       migrate:
         condition: service_completed_successfully

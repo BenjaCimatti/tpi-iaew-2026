@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tablero de cocina</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6a66; --border: #e3e1db;
+    --recibida: #2f6fdb; --preparacion: #d98a00; --lista: #1f9d55; --error: #c8372d;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #151514; --panel: #1f1f1d; --text: #ecebe6; --muted: #a09e97; --border: #34332f; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; padding: 14px 20px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  h1 { font-size: 18px; margin: 0; }
+  .estado { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+  .estado::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
+  .estado[data-estado="conectado"]::before { background: var(--lista); }
+  .estado[data-estado="error"]::before { background: var(--error); }
+  .estado[data-estado="conectando"]::before { background: var(--preparacion); }
+  form { display: flex; gap: 8px; flex: 1 1 360px; max-width: 620px; }
+  input { flex: 1; min-width: 0; padding: 8px 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
+  button { padding: 8px 14px; border: 0; border-radius: 6px; background: var(--text); color: var(--bg); font: inherit; font-weight: 600; cursor: pointer; }
+  main { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; padding: 20px; }
+  @media (max-width: 820px) { main { grid-template-columns: 1fr; padding: 16px; } }
+  section { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; min-height: 240px; }
+  section h2 { display: flex; justify-content: space-between; margin: 0; padding: 12px 14px; font-size: 14px; text-transform: uppercase; letter-spacing: .04em; border-bottom: 3px solid var(--color); }
+  section h2 span { color: var(--muted); }
+  .lista-ordenes { display: grid; gap: 10px; padding: 12px; }
+  .vacia { color: var(--muted); font-size: 13px; padding: 4px 2px; }
+  article { border: 1px solid var(--border); border-left: 4px solid var(--color); border-radius: 8px; padding: 10px 12px; background: var(--bg); }
+  article.nueva { animation: aparecer 1.6s ease-out; }
+  @keyframes aparecer { from { box-shadow: 0 0 0 3px var(--color); } to { box-shadow: 0 0 0 0 transparent; } }
+  article header { all: unset; display: flex; justify-content: space-between; font-weight: 700; }
+  article ul { margin: 6px 0; padding-left: 18px; }
+  article small { color: var(--muted); font-size: 12px; display: block; }
+  #log { margin: 0 20px 20px; padding: 10px 14px; background: var(--panel); border: 1px solid var(--border); border-radius: 10px; font: 12px/1.6 ui-monospace, Consolas, monospace; color: var(--muted); max-height: 160px; overflow: auto; }
+  #log:empty::before { content: "Sin eventos todavía."; }
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>Tablero de cocina</h1>
+    <span id="estado" class="estado" data-estado="desconectado">Desconectado</span>
+  </div>
+  <form id="auth" autocomplete="off">
+    <input id="token" type="password" placeholder="Access token con read:cocina" aria-label="Access token" required>
+    <button type="submit">Conectar</button>
+  </form>
+</header>
+<main>
+  <section style="--color: var(--recibida)" data-col="recibida"><h2>Recibidas <span>0</span></h2><div class="lista-ordenes"></div></section>
+  <section style="--color: var(--preparacion)" data-col="en_preparacion"><h2>En preparación <span>0</span></h2><div class="lista-ordenes"></div></section>
+  <section style="--color: var(--lista)" data-col="lista"><h2>Listas <span>0</span></h2><div class="lista-ordenes"></div></section>
+</main>
+<pre id="log"></pre>
+<script>
+  // El token solo vive en memoria: no se guarda en el navegador ni viaja en la URL.
+  let token = '';
+  let socket;
+  let reintento = 0;
+  let timerReconexion;
+  const ordenes = new Map();
+  const nuevas = new Set();
+  const $ = (selector) => document.querySelector(selector);
+
+  function estado(texto, valor) {
+    $('#estado').textContent = texto;
+    $('#estado').dataset.estado = valor;
+  }
+
+  function log(texto) {
+    const linea = `${new Date().toLocaleTimeString()}  ${texto}\n`;
+    $('#log').textContent = (linea + $('#log').textContent).split('\n').slice(0, 40).join('\n');
+  }
+
+  // Aplica una orden solo si es igual o más reciente que la conocida: el
+  // snapshot y los eventos en vivo pueden llegar intercalados.
+  function aplicar(orden) {
+    const actual = ordenes.get(orden.id);
+    if (actual && Date.parse(actual.actualizadoEn) > Date.parse(orden.actualizadoEn)) return;
+    if (['entregado', 'cancelado'].includes(orden.pedidoEstado)) ordenes.delete(orden.id);
+    else ordenes.set(orden.id, orden);
+  }
+
+  function render() {
+    for (const columna of document.querySelectorAll('section[data-col]')) {
+      const lista = columna.querySelector('.lista-ordenes');
+      const propias = [...ordenes.values()].filter((o) => o.estado === columna.dataset.col)
+        .sort((a, b) => Date.parse(a.creadoEn) - Date.parse(b.creadoEn));
+      columna.querySelector('h2 span').textContent = propias.length;
+      lista.replaceChildren(...(propias.length ? propias.map(tarjeta) : [Object.assign(document.createElement('div'), { className: 'vacia', textContent: 'Sin órdenes' })]));
+    }
+    nuevas.clear();
+  }
+
+  function tarjeta(orden) {
+    const article = document.createElement('article');
+    if (nuevas.has(orden.id)) article.className = 'nueva';
+    const cabecera = document.createElement('header');
+    cabecera.append(Object.assign(document.createElement('span'), { textContent: `Mesa ${orden.mesa}` }),
+      Object.assign(document.createElement('span'), { textContent: new Date(orden.creadoEn).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }));
+    const items = document.createElement('ul');
+    for (const item of orden.items) items.append(Object.assign(document.createElement('li'), { textContent: `${item.cantidad} × ${item.nombre}` }));
+    const pie = Object.assign(document.createElement('small'), { textContent: `Orden ${orden.id.slice(0, 8)} · pedido ${orden.pedidoEstado}` });
+    article.append(cabecera, items, pie);
+    return article;
+  }
+
+  function conectar() {
+    clearTimeout(timerReconexion);
+    socket?.close();
+    estado('Conectando…', 'conectando');
+    const url = `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws/cocina`;
+    const ws = new WebSocket(url);
+    socket = ws;
+    ws.onopen = () => ws.send(JSON.stringify({ type: 'auth', token }));
+    ws.onmessage = ({ data }) => {
+      const mensaje = JSON.parse(data);
+      if (mensaje.type === 'auth.ok') {
+        reintento = 0;
+        estado(`Conectado · token vence ${new Date(mensaje.expiresAt).toLocaleTimeString()}`, 'conectado');
+      } else if (mensaje.type === 'snapshot') {
+        ordenes.clear();
+        mensaje.ordenes.forEach(aplicar);
+        render();
+        log(`snapshot: ${mensaje.ordenes.length} órdenes activas`);
+      } else if (mensaje.type === 'orden.creada' || mensaje.type === 'orden.actualizada') {
+        nuevas.add(mensaje.orden.id);
+        aplicar(mensaje.orden);
+        render();
+        log(`${mensaje.type}: mesa ${mensaje.orden.mesa} → ${mensaje.orden.estado} (pedido ${mensaje.orden.pedidoEstado}) · correlationId ${mensaje.correlationId}`);
+      } else if (mensaje.type === 'error') {
+        log(`error ${mensaje.codigo}: ${mensaje.mensaje}`);
+      }
+    };
+    ws.onclose = (evento) => {
+      if (socket !== ws) return;
+      // 4401/4403/4400: problema de credenciales; reconectar con el mismo token no sirve.
+      if ([4400, 4401, 4403].includes(evento.code)) {
+        estado(evento.code === 4403 ? 'Sin permiso read:cocina' : 'Token inválido o vencido: pegar uno nuevo', 'error');
+        return;
+      }
+      const espera = Math.min(1000 * 2 ** reintento++, 15000);
+      estado(`Desconectado · reintento en ${Math.round(espera / 1000)} s`, 'error');
+      timerReconexion = setTimeout(conectar, espera);
+    };
+  }
+
+  $('#auth').addEventListener('submit', (evento) => {
+    evento.preventDefault();
+    token = $('#token').value.trim().replace(/^Bearer\s+/i, '');
+    $('#token').value = '';
+    reintento = 0;
+    conectar();
+  });
+  render();
+</script>
+</body>
+</html>

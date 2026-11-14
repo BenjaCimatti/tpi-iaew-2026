@@ -1,8 +1,11 @@
 import express from 'express';
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { healthController } from './controllers/health.js';
 import { productoController } from './controllers/productos.js';
 import { pedidoController } from './controllers/pedidos.js';
+import { cocinaController } from './controllers/cocina.js';
+import { createCocinaApiService } from './services/cocina.js';
 import { createProductoService } from './services/productos.js';
 import { createPedidoService } from './services/pedidos.js';
 import { errorHandler, HttpError } from './http/errors.js';
@@ -10,7 +13,9 @@ import { UUID } from './http/validation.js';
 import { createAuthorization } from './http/authorization.js';
 import { requireApiKey } from './http/api-key.js';
 
-export function createApp(checkHealth, logger, { client, authorize = createAuthorization(), apiKey, onPedidoConfirmado } = {}) {
+// onOutbox: aviso al publicador tras cada transacción que escribe en outbox.
+// tablero: el worker sirve la página del tablero de cocina.
+export function createApp(checkHealth, logger, { client, authorize = createAuthorization(), apiKey, onOutbox, tablero = false } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.use((request, response, next) => {
@@ -21,10 +26,13 @@ export function createApp(checkHealth, logger, { client, authorize = createAutho
   });
   app.use(express.json({ limit: '64kb' }));
   app.get(['/', '/health'], healthController(checkHealth));
+  if (tablero) app.get('/tablero', (_request, response) => response.sendFile(fileURLToPath(new URL('./public/tablero.html', import.meta.url))));
   if (client) {
     app.get('/health-protegido', requireApiKey(apiKey), healthController(checkHealth));
     app.use('/productos', productoController(createProductoService(client), authorize));
-    app.use('/pedidos', pedidoController(createPedidoService(client, { onConfirmed: onPedidoConfirmado }), authorize));
+    const cocina = createCocinaApiService(client, { onEvento: onOutbox });
+    app.use('/pedidos', pedidoController(createPedidoService(client, { onConfirmed: onOutbox }), authorize, cocina));
+    app.use('/cocina', cocinaController(cocina, authorize));
   }
   app.use((_request, response) => {
     response.status(404).json({ codigo: 'NO_ENCONTRADO', mensaje: 'Ruta inexistente', correlationId: _request.correlationId });

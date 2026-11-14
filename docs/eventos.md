@@ -17,6 +17,7 @@ la recreación del contenedor.
 | Exchange de eventos | `restaurante.eventos` | `topic`, durable |
 | Cola de cocina | `cocina.pedido-confirmado` | quorum, durable, `x-delivery-limit: 5` (red de seguridad), `x-dead-letter-exchange: restaurante.eventos.dlx` |
 | Binding | `restaurante.eventos` → `cocina.pedido-confirmado` | routing key `pedido.confirmado` |
+| Cola del gateway | nombre generado por RabbitMQ | exclusiva, temporal, binding `orden.actualizada` |
 | Exchange de mensajes fallidos | `restaurante.eventos.dlx` | `topic`, durable |
 | DLQ | `cocina.pedido-confirmado.dlq` | quorum, durable, binding `#` |
 
@@ -53,6 +54,29 @@ Propiedades AMQP: `messageId` = `eventId`, `type` = `pedido.confirmado`,
 - `nombre` se incluye para que cocina muestre la orden sin consultar el catálogo.
 - Cambios incompatibles incrementan `version`; los consumidores deben rechazar
   versiones que no soportan.
+
+## `orden.actualizada` — versión 1
+
+Lo registra la API en outbox, en la misma transacción que `PATCH
+/cocina/ordenes/{id}` o `POST /pedidos/{id}/entregar`. Se publica igual que
+`pedido.confirmado` (routing key `orden.actualizada`). Lo consume el gateway
+WebSocket del worker con una **cola exclusiva y temporal** (difusión en vivo;
+no se reprocesa: al reconectar, el tablero recibe un snapshot desde la DB).
+
+```json
+{
+  "eventId": "0b6f2a77-6a8e-4a3f-9f0e-7a2d1f1c9b10",
+  "eventType": "orden.actualizada",
+  "version": 1,
+  "occurredAt": "2026-11-14T18:45:10.120Z",
+  "correlationId": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+  "pedidoId": "f3c59a3c-5a71-4c43-83f7-cd2f1bea68e8",
+  "data": { "orden": { "id": "85097133-…", "estado": "lista", "pedidoEstado": "listo", "mesa": 1, "items": [], "creadoEn": "…", "actualizadoEn": "…" } }
+}
+```
+
+`data.orden` tiene la forma de `GET /cocina/ordenes/{id}`. Ver
+[websocket.md](websocket.md).
 
 ## Garantías y política de fallos
 

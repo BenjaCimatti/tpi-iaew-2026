@@ -25,7 +25,7 @@ test('Confirmación: atomicidad, outbox, precios capturados, rechazos y concurre
   let notificaciones = 0;
   const app = createApp(async () => ({ estado: 'ok' }), logger, {
     client, authorize: createAuthorization({ issuer, jwksUri: `${issuer}jwks`, audience }),
-    onPedidoConfirmado: () => { notificaciones++; },
+    onOutbox: () => { notificaciones++; },
   });
   const server = app.listen(0, '127.0.0.1');
   await once(server, 'listening');

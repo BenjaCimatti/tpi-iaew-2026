@@ -6,6 +6,9 @@ export const DLX = 'restaurante.eventos.dlx';
 export const COLA_COCINA = 'cocina.pedido-confirmado';
 export const DLQ_COCINA = 'cocina.pedido-confirmado.dlq';
 export const PEDIDO_CONFIRMADO = 'pedido.confirmado';
+// Cambios de estado de cocina/entrega: los recibe el gateway WebSocket del worker
+// con una cola exclusiva y temporal (difusión en vivo; el snapshot cubre lo perdido).
+export const ORDEN_ACTUALIZADA = 'orden.actualizada';
 // Reintentos del consumidor ante fallos transitorios antes de enviar a la DLQ
 // (con espera 1, 2, 4, 8 y luego 10 s: ~75 s de tolerancia a una caída de DB).
 export const MAX_REINTENTOS = 10;

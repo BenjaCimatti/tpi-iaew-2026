@@ -6,7 +6,7 @@ export const pedidoJSON = (pedido) => ({
   creadoEn: pedido.creadoEn, confirmadoEn: pedido.confirmadoEn,
 });
 
-export function pedidoController(service, authorize) {
+export function pedidoController(service, authorize, cocina) {
   const router = Router();
   router.get('/', ...authorize('read:pedidos'), async (request, response) => response.json((await service.list(request.query.estado)).map(pedidoJSON)));
   router.post('/', ...authorize('write:pedidos'), async (request, response) => {
@@ -21,5 +21,9 @@ export function pedidoController(service, authorize) {
   });
   router.post('/:pedidoId/cancelar', ...authorize('write:pedidos'), async (request, response) => response.json(pedidoJSON(await service.cancel(request.params.pedidoId))));
   router.post('/:pedidoId/confirmar', ...authorize('confirm:pedidos'), async (request, response) => response.json(pedidoJSON(await service.confirm(request.params.pedidoId, request.correlationId))));
+  router.post('/:pedidoId/entregar', ...authorize('write:pedidos'), async (request, response) => {
+    const pedidoId = await cocina.entregar(request.params.pedidoId, request.correlationId);
+    response.json(pedidoJSON(await service.get(pedidoId)));
+  });
   return router;
 }

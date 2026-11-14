@@ -15,6 +15,8 @@ tags:
   description: Productos del restaurante
 - name: Pedidos
   description: Pedidos del restaurante
+- name: Cocina
+  description: Órdenes de cocina; el tablero en vivo usa WebSocket (docs/websocket.md)
 - name: Salud
   description: Salud del restaurante
 paths:
@@ -555,6 +557,196 @@ paths:
       operationId: post_pedidos_pedidoId_confirmar
       tags:
       - Pedidos
+  "/pedidos/{pedidoId}/entregar":
+    parameters:
+    - name: pedidoId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    post:
+      summary: Entregar un pedido listo
+      description: >-
+        El mozo entrega un pedido en estado `listo`: pasa a `entregado` y se
+        registra `orden.actualizada` en outbox para que el tablero retire la orden.
+      security:
+      - bearerAuth:
+        - write:pedidos
+      responses:
+        '200':
+          description: Pedido entregado
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Pedido"
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '404':
+          "$ref": "#/components/responses/404"
+        '409':
+          description: El pedido no está `listo` (`ESTADO_INCOMPATIBLE`)
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
+      operationId: post_pedidos_pedidoId_entregar
+      tags:
+      - Pedidos
+  "/cocina/ordenes":
+    get:
+      summary: Listar órdenes de cocina
+      description: Incluye las de pedidos entregados; el tablero muestra solo las activas.
+      security:
+      - bearerAuth:
+        - read:cocina
+      parameters:
+      - name: estado
+        in: query
+        required: false
+        schema:
+          "$ref": "#/components/schemas/EstadoOrdenCocina"
+      responses:
+        '200':
+          description: Órdenes ordenadas por fecha de creación
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  "$ref": "#/components/schemas/OrdenCocina"
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
+      operationId: get_cocina_ordenes
+      tags:
+      - Cocina
+  "/cocina/ordenes/{ordenId}":
+    parameters:
+    - name: ordenId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      summary: Consultar una orden de cocina
+      security:
+      - bearerAuth:
+        - read:cocina
+      responses:
+        '200':
+          description: Orden de cocina
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/OrdenCocina"
+              example:
+                id: 85097133-1ecd-4acd-b4ca-dda0b89fa719
+                pedidoId: f3c59a3c-5a71-4c43-83f7-cd2f1bea68e8
+                estado: en_preparacion
+                pedidoEstado: en_preparacion
+                mesa: 1
+                items:
+                - productoId: a1c9f0e0-2222-4a2b-9c3d-000000000002
+                  nombre: Milanesa napolitana
+                  cantidad: 2
+                creadoEn: '2026-11-14T18:42:39.000Z'
+                actualizadoEn: '2026-11-14T18:45:10.000Z'
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '404':
+          "$ref": "#/components/responses/404"
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
+      operationId: get_cocina_ordenes_ordenId
+      tags:
+      - Cocina
+    patch:
+      summary: Avanzar el estado de una orden de cocina
+      description: >-
+        Solo avanza un paso: `recibida` → `en_preparacion` → `lista`. Sincroniza el
+        pedido (`en_preparacion` → pedido `en_preparacion`; `lista` → pedido
+        `listo`) y registra `orden.actualizada` en outbox en la misma transacción;
+        el gateway WebSocket lo difunde al tablero (ver docs/websocket.md).
+        `write:pedidos` no habilita este cambio.
+      security:
+      - bearerAuth:
+        - write:cocina
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - estado
+              properties:
+                estado:
+                  "$ref": "#/components/schemas/EstadoOrdenCocina"
+            example:
+              estado: en_preparacion
+      responses:
+        '200':
+          description: Orden actualizada
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/OrdenCocina"
+              example:
+                id: 85097133-1ecd-4acd-b4ca-dda0b89fa719
+                pedidoId: f3c59a3c-5a71-4c43-83f7-cd2f1bea68e8
+                estado: en_preparacion
+                pedidoEstado: en_preparacion
+                mesa: 1
+                items:
+                - productoId: a1c9f0e0-2222-4a2b-9c3d-000000000002
+                  nombre: Milanesa napolitana
+                  cantidad: 2
+                creadoEn: '2026-11-14T18:42:39.000Z'
+                actualizadoEn: '2026-11-14T18:45:10.000Z'
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '404':
+          "$ref": "#/components/responses/404"
+        '409':
+          description: Transición no permitida (`TRANSICION_INVALIDA`), p. ej. saltar a `lista` o retroceder
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
+      operationId: patch_cocina_ordenes_ordenId
+      tags:
+      - Cocina
   "/":
     get:
       summary: Alias del healthcheck
@@ -773,6 +965,50 @@ components:
           precioUnitario: 7500
         creadoEn: '2026-11-13T00:00:00Z'
         confirmadoEn:
+    EstadoOrdenCocina:
+      type: string
+      enum:
+      - recibida
+      - en_preparacion
+      - lista
+    OrdenCocina:
+      type: object
+      required: [id, pedidoId, estado, pedidoEstado, mesa, items, creadoEn, actualizadoEn]
+      properties:
+        id:
+          type: string
+          format: uuid
+        pedidoId:
+          type: string
+          format: uuid
+        estado:
+          "$ref": "#/components/schemas/EstadoOrdenCocina"
+        pedidoEstado:
+          type: string
+          enum: [confirmado, en_preparacion, listo, entregado]
+        mesa:
+          type: integer
+          description: Número de mesa
+        items:
+          type: array
+          items:
+            type: object
+            required: [productoId, nombre, cantidad]
+            properties:
+              productoId:
+                type: string
+                format: uuid
+              nombre:
+                type: string
+              cantidad:
+                type: integer
+                minimum: 1
+        creadoEn:
+          type: string
+          format: date-time
+        actualizadoEn:
+          type: string
+          format: date-time
     Error:
       type: object
       required:
@@ -893,13 +1129,13 @@ components:
           tokenUrl: https://dev-6qbph7he6b6cur0j.us.auth0.com/oauth/token
           scopes:
             read:pedidos: Consultar productos y pedidos
-            write:pedidos: Crear, editar, eliminar y cancelar pedidos pendientes
+            write:pedidos: Crear, editar, eliminar y cancelar pedidos pendientes; entregar pedidos listos
             admin:productos: Administrar productos
             confirm:pedidos: Confirmar pedidos
-            read:cocina: Consultar cocina (E2-07)
-            write:cocina: Actualizar cocina (E2-07)
-x-endpoints-pendientes:
-  E2-07:
-  - Consulta y cambio de estado de órdenes de cocina
+            read:cocina: Consultar órdenes de cocina y suscribirse al tablero WebSocket
+            write:cocina: Avanzar el estado de las órdenes de cocina
+x-websocket: >-
+  ws://localhost:3001/ws/cocina (worker). Autenticación con un mensaje
+  {"type":"auth","token":"..."} y scope read:cocina; contrato en docs/websocket.md.
 x-correlation-id: Se acepta un UUID en x-correlation-id; se genera uno si está ausente
   y se devuelve en el header. Formato inválido devuelve 400.

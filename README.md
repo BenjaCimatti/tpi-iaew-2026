@@ -207,16 +207,19 @@ dependencias están disponibles); ausente/incorrecta devuelve `401`. Esa clave n
 API y worker se construyen con `api/Dockerfile` y `worker/Dockerfile`. Comparten
 el manifiesto, el lockfile y el código de conexión/salud en `src/`, organizado en
 controller, service y repository. Ambos cierran HTTP, AMQP y el pool de DB al
-recibir `SIGTERM`/`SIGINT`. El puerto `3001` queda destinado al proceso worker/gateway;
-el WebSocket y el tablero se implementan en E2-07, y la observabilidad en E2-08.
+recibir `SIGTERM`/`SIGINT`. El puerto `3001` es del proceso worker/gateway: sirve
+`/health`, el tablero (`/tablero`) y el WebSocket (`/ws/cocina`). El worker recibe
+`AUTH0_DOMAIN`/`AUTH0_AUDIENCE` para validar tokens del stream, nunca secretos M2M.
 
 **Alcance de la comprobación:** el healthcheck solo comprueba conexiones a
 DB/broker. El flujo de negocio (confirmación → RabbitMQ → orden de cocina) se
 describe en [Confirmación y flujo asincrónico](#confirmación-y-flujo-asincrónico--e2-05e2-06).
-WebSocket y métricas siguen pendientes en E2-07/E2-08.
+El tablero WebSocket se describe en [Cocina y tablero](#cocina-y-tablero-en-tiempo-real--e2-07);
+las métricas siguen pendientes en E2-08.
 
 Evidencia: [verificación de E2-01](docs/verificacion-e2-01.md),
-[E2-05](docs/verificacion-e2-05.md), [E2-06](docs/verificacion-e2-06.md) y
+[E2-05](docs/verificacion-e2-05.md), [E2-06](docs/verificacion-e2-06.md),
+[E2-07](docs/verificacion-e2-07.md) y
 [verificación de E2-02](docs/verificacion-e2-02.md).
 Ver también [verificación de E2-03](docs/verificacion-e2-03.md).
 Seguridad: [verificación de E2-04](docs/verificacion-e2-04.md).
@@ -381,8 +384,27 @@ La API registra `outbox.publicar` y el worker `cocina.consumir`, ambos con
 En RabbitMQ Management ([http://localhost:15672](http://localhost:15672)) se ven
 la cola de cocina, su consumidor y la DLQ.
 
-Las órdenes de cocina todavía no se consultan por HTTP ni se muestran en el
-tablero: eso corresponde a E2-07.
+## Cocina y tablero en tiempo real — E2-07
+
+| Operación | Ruta | Scope |
+|---|---|---|
+| Listar / consultar órdenes | `GET /cocina/ordenes[?estado=]`, `GET /cocina/ordenes/{ordenId}` | `read:cocina` |
+| Avanzar estado | `PATCH /cocina/ordenes/{ordenId}` con `{"estado":"en_preparacion"}` o `{"estado":"lista"}` | `write:cocina` |
+| Entregar pedido listo | `POST /pedidos/{pedidoId}/entregar` | `write:pedidos` |
+| Tablero WebSocket | `ws://localhost:3001/ws/cocina` | `read:cocina` |
+
+Cocina avanza `recibida → en_preparacion → lista` y el pedido acompaña
+(`en_preparacion`, `listo`); el mozo lo entrega (`entregado`). Saltos o
+retrocesos devuelven `409`. `write:pedidos` no modifica cocina.
+
+**Tablero:** abrir [http://localhost:3001/tablero](http://localhost:3001/tablero),
+pegar un access token con `read:cocina` (request **00** de Postman) y conectar.
+Al confirmar un pedido la orden aparece en *Recibidas*; cada `PATCH` la mueve de
+columna sin recargar y la entrega la retira. El token se envía en el primer
+mensaje del WebSocket (no en la URL), se valida igual que en la API y la
+conexión se cierra al vencer. Sin token, con token inválido o sin `read:cocina`,
+la conexión se rechaza (`4408`/`4401`/`4403`). Al reconectar, el tablero recibe
+el estado actual desde la DB. Contrato completo: [docs/websocket.md](docs/websocket.md).
 
 ## Pruebas y desarrollo
 
@@ -439,9 +461,12 @@ Ver [`docs/adr/`](docs/adr/).
 
 ## Limitaciones conocidas y mejoras futuras
 
-- E2-01 a E2-06 incorporan infraestructura, datos, CRUD protegidos con Auth0, API key,
-  confirmación con outbox y consumidor de cocina. WebSocket, endpoints de cocina y
-  dashboard siguen pendientes. La autenticación/expiración del stream se implementará con E2-07.
+- E2-01 a E2-07 incorporan infraestructura, datos, CRUD protegidos con Auth0, API key,
+  confirmación con outbox, consumidor de cocina, endpoints de cocina y tablero
+  WebSocket. Métricas/dashboard (E2-08) y carga (E2-09) siguen pendientes.
+- El tablero solo muestra órdenes y estados; los cambios se hacen por la API
+  (Postman). Un único proceso worker sirve el WebSocket: escalarlo a varias
+  réplicas funcionaría (cada una tiene su cola exclusiva), pero no se probó.
 - Entrega de eventos *al menos una vez*: el efecto es idempotente, no hay entrega
   exactamente una vez. Los mensajes en la DLQ se revisan y reprocesan manualmente
   desde RabbitMQ Management.
