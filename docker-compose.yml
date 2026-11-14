@@ -86,12 +86,16 @@ services:
 
   broker:
     image: rabbitmq:4.3.6-management-alpine
+    # Hostname fijo: RabbitMQ guarda sus datos bajo el nombre del nodo (rabbit@broker).
+    hostname: broker
     ports:
       - "5672:5672"   # AMQP
       - "15672:15672" # Panel de administración
     environment:
       - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-restaurante}
       - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASSWORD:-restaurante}
+    volumes:
+      - broker_data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 10s
@@ -100,3 +104,4 @@ services:
 
 volumes:
   db_data:
+  broker_data:

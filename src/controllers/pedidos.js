@@ -20,5 +20,6 @@ export function pedidoController(service, authorize) {
     response.sendStatus(204);
   });
   router.post('/:pedidoId/cancelar', ...authorize('write:pedidos'), async (request, response) => response.json(pedidoJSON(await service.cancel(request.params.pedidoId))));
+  router.post('/:pedidoId/confirmar', ...authorize('confirm:pedidos'), async (request, response) => response.json(pedidoJSON(await service.confirm(request.params.pedidoId, request.correlationId))));
   return router;
 }

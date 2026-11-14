@@ -15,7 +15,7 @@ function fakeConnection() {
       channel.emit('close');
     }
   };
-  connection.createChannel = async () => channel;
+  connection.createConfirmChannel = async () => channel;
   connection.close = async () => {
     if (!closed) {
       closed = true;
@@ -66,6 +66,31 @@ test('broker: reintenta al arrancar, recupera conexión/canal y cierra sin recon
   assert.equal(broker.ready, false);
   assert.equal(attempts, 4);
   assert.ok(logs.every((line) => !line.includes('secret')));
+});
+
+test('broker: declara la topología, publica con confirmación y rechaza si no está listo', async (t) => {
+  const { connection, channel } = fakeConnection();
+  let confirmWith;
+  channel.publish = (exchange, routingKey, content, options, callback) => {
+    channel.last = { exchange, routingKey, options };
+    callback(confirmWith);
+  };
+  const setupCalls = [];
+  const events = new EventEmitter();
+  const connected = once(events, 'connected');
+  t.mock.method(amqp, 'connect', async () => connection);
+  const logger = { info() { events.emit('connected'); }, warn() {} };
+  const broker = createBroker('amqp://broker', 'api', logger, { setup: async (ch) => setupCalls.push(ch) });
+  t.after(() => broker.close());
+  await assert.rejects(broker.publish('ex', 'rk', Buffer.from('{}')), /no disponible/);
+  await connected;
+  assert.deepEqual(setupCalls, [channel]);
+  await broker.publish('ex', 'pedido.confirmado', Buffer.from('{}'), { messageId: 'm1' });
+  assert.equal(channel.last.routingKey, 'pedido.confirmado');
+  assert.equal(channel.last.options.persistent, true);
+  assert.equal(channel.last.options.messageId, 'm1');
+  confirmWith = new Error('nack');
+  await assert.rejects(broker.publish('ex', 'rk', Buffer.from('{}')), /nack/);
 });
 
 test('broker: cierra también si SIGTERM llega durante la conexión inicial', async (t) => {

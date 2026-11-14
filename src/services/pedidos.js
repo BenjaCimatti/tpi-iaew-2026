@@ -1,7 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import { EstadoPedido, Prisma } from '../generated/prisma/client.ts';
 import * as repository from '../repositories/pedidos.js';
 import { HttpError } from '../http/errors.js';
 import { invalid, object, uuid } from '../http/validation.js';
+import { PEDIDO_CONFIRMADO } from '../messaging/topology.js';
+
+const EVENT_VERSION = 1;
 
 function input(body) {
   object(body);
@@ -40,7 +44,43 @@ function requirePending(pedido) {
   if (pedido.estado !== 'pendiente') throw new HttpError(409, 'ESTADO_INCOMPATIBLE', 'La operación requiere un pedido pendiente');
 }
 
-export function createPedidoService(client) {
+// Confirmación multi-paso dentro de una única transacción SQL:
+// bloqueo del pedido → validación de estado e ítems → bloqueo compartido y
+// validación de productos → total con precios capturados → estado/total/fecha
+// → evento pedido.confirmado en outbox. Cualquier rechazo revierte todo.
+// La orden de cocina NO se crea aquí: la crea el worker al consumir el evento.
+async function confirmar(tx, pedido, correlationId) {
+  if (!pedido.items.length) throw new HttpError(409, 'PEDIDO_SIN_ITEMS', 'El pedido no tiene ítems para confirmar');
+  const productos = new Map((await repository.lockProductos(tx, pedido.items.map((item) => item.productoId)))
+    .map((producto) => [producto.id, producto]));
+  const items = pedido.items.map((item) => {
+    const producto = productos.get(item.productoId);
+    if (!producto) throw new HttpError(409, 'PRODUCTO_NO_ENCONTRADO', 'El pedido contiene un producto inexistente');
+    if (!producto.disponible) throw new HttpError(409, 'PRODUCTO_NO_DISPONIBLE', 'El pedido contiene un producto no disponible');
+    if (!Number.isInteger(item.cantidad) || item.cantidad < 1) throw new HttpError(409, 'CANTIDAD_INVALIDA', 'El pedido contiene una cantidad inválida');
+    return { ...item, nombre: producto.nombre };
+  });
+  const total = items.reduce((sum, item) => sum.plus(item.precioUnitario.times(item.cantidad)), new Prisma.Decimal(0));
+  const confirmadoEn = new Date();
+  const eventId = randomUUID();
+  const confirmado = await repository.confirmPedido(tx, pedido.id, { total, confirmadoEn });
+  await repository.createEvento(tx, {
+    id: eventId, pedidoId: pedido.id, eventType: PEDIDO_CONFIRMADO, version: EVENT_VERSION,
+    occurredAt: confirmadoEn, correlationId,
+    payload: {
+      eventId, eventType: PEDIDO_CONFIRMADO, version: EVENT_VERSION, occurredAt: confirmadoEn.toISOString(), correlationId,
+      pedidoId: pedido.id,
+      data: {
+        mesaId: pedido.mesaId,
+        total: total.toFixed(2),
+        items: items.map(({ productoId, nombre, cantidad, precioUnitario }) => ({ productoId, nombre, cantidad, precioUnitario: precioUnitario.toFixed(2) })),
+      },
+    },
+  });
+  return confirmado;
+}
+
+export function createPedidoService(client, { onConfirmed = () => {} } = {}) {
   async function modify(id, operation) {
     id = uuid(id, 'pedidoId');
     return client.$transaction(async (tx) => {
@@ -69,5 +109,10 @@ export function createPedidoService(client) {
     },
     delete: (id) => modify(id, (tx, pedido) => repository.deletePedido(tx, pedido.id)),
     cancel: (id) => modify(id, (tx, pedido) => repository.cancelPedido(tx, pedido.id)),
+    async confirm(id, correlationId = randomUUID()) {
+      const pedido = await modify(id, (tx, actual) => confirmar(tx, actual, correlationId));
+      onConfirmed(pedido);
+      return pedido;
+    },
   };
 }

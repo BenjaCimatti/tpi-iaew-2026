@@ -10,7 +10,7 @@ import { UUID } from './http/validation.js';
 import { createAuthorization } from './http/authorization.js';
 import { requireApiKey } from './http/api-key.js';
 
-export function createApp(checkHealth, logger, { client, authorize = createAuthorization(), apiKey } = {}) {
+export function createApp(checkHealth, logger, { client, authorize = createAuthorization(), apiKey, onPedidoConfirmado } = {}) {
   const app = express();
   app.disable('x-powered-by');
   app.use((request, response, next) => {
@@ -24,7 +24,7 @@ export function createApp(checkHealth, logger, { client, authorize = createAutho
   if (client) {
     app.get('/health-protegido', requireApiKey(apiKey), healthController(checkHealth));
     app.use('/productos', productoController(createProductoService(client), authorize));
-    app.use('/pedidos', pedidoController(createPedidoService(client), authorize));
+    app.use('/pedidos', pedidoController(createPedidoService(client, { onConfirmed: onPedidoConfirmado }), authorize));
   }
   app.use((_request, response) => {
     response.status(404).json({ codigo: 'NO_ENCONTRADO', mensaje: 'Ruta inexistente', correlationId: _request.correlationId });

@@ -201,7 +201,8 @@ dependencias están disponibles); ausente/incorrecta devuelve `401`. Esa clave n
    docker compose down
    ```
 
-   Este comando conserva el volumen de PostgreSQL y sus datos.
+   Este comando conserva los volúmenes de PostgreSQL y RabbitMQ (colas y
+   mensajes pendientes).
 
 API y worker se construyen con `api/Dockerfile` y `worker/Dockerfile`. Comparten
 el manifiesto, el lockfile y el código de conexión/salud en `src/`, organizado en
@@ -209,14 +210,13 @@ controller, service y repository. Ambos cierran HTTP, AMQP y el pool de DB al
 recibir `SIGTERM`/`SIGINT`. El puerto `3001` queda destinado al proceso worker/gateway;
 el WebSocket y el tablero se implementan en E2-07, y la observabilidad en E2-08.
 
-**Alcance de la comprobación:** las aplicaciones propias ya comprueban conexiones
-a DB/broker. Esto todavía no demuestra publicación/consumo de `pedido.confirmado`
-ni creación de órdenes de cocina. El worker abre un canal AMQP; todavía no consume
-mensajes de negocio. E2-02 incorpora esquema/migraciones/seed; E2-03 incorpora
-los CRUD y su middleware JWT/scopes. E2-04 incorpora Auth0 real y API key.
-Confirmación, publicación/consumo de eventos, WebSocket y métricas siguen en sus bloques.
+**Alcance de la comprobación:** el healthcheck solo comprueba conexiones a
+DB/broker. El flujo de negocio (confirmación → RabbitMQ → orden de cocina) se
+describe en [Confirmación y flujo asincrónico](#confirmación-y-flujo-asincrónico--e2-05e2-06).
+WebSocket y métricas siguen pendientes en E2-07/E2-08.
 
-Evidencia: [verificación de E2-01](docs/verificacion-e2-01.md) y
+Evidencia: [verificación de E2-01](docs/verificacion-e2-01.md),
+[E2-05](docs/verificacion-e2-05.md), [E2-06](docs/verificacion-e2-06.md) y
 [verificación de E2-02](docs/verificacion-e2-02.md).
 Ver también [verificación de E2-03](docs/verificacion-e2-03.md).
 Seguridad: [verificación de E2-04](docs/verificacion-e2-04.md).
@@ -265,7 +265,8 @@ docker compose exec api npm run db:migrate
 
 Para reinicializar **toda la base local** con datos de demo desde cero:
 
-**Esto borra todos los datos del volumen del proyecto, incluidos los pedidos.
+**Esto borra todos los datos de los volúmenes del proyecto, incluidos los
+pedidos y los mensajes pendientes en RabbitMQ.
 No hace falta hacerlo para repetir el seed ni para actualizar migraciones.**
 
 ```bash
@@ -335,8 +336,53 @@ Para comprobar cancelación manualmente, crear un pedido y ejecutar
 `POST /pedidos/{pedidoId}/cancelar`: devuelve `200` y estado `cancelado`.
 Intentar editarlo, eliminarlo o cancelarlo otra vez devuelve `409`.
 
-Confirmación y órdenes de cocina aún no son rutas activas; el OpenAPI
-las identifica como pendientes de E2-05/E2-07.
+## Confirmación y flujo asincrónico — E2-05/E2-06
+
+`POST /pedidos/{pedidoId}/confirmar` (scope `confirm:pedidos`) confirma un pedido
+`pendiente` en una única transacción: valida ítems y productos disponibles,
+calcula el total con los precios capturados, guarda estado/total/`confirmadoEn`
+y registra el evento `pedido.confirmado` en la tabla `outbox`. Responde `200`
+con el pedido confirmado; reconfirmar, pedido cancelado, sin ítems o con un
+producto no disponible devuelven `409` sin modificar nada.
+
+```
+API ──(misma transacción)──► pedido + outbox ──► publicador ──► RabbitMQ
+                                                                 │ restaurante.eventos
+                                                                 ▼ pedido.confirmado
+                         orden_cocina (recibida) ◄── worker ◄── cocina.pedido-confirmado
+                                                                 │ fallidos
+                                                                 ▼
+                                                     cocina.pedido-confirmado.dlq
+```
+
+La orden de cocina se crea **después**, en el worker (consistencia eventual):
+la transacción SQL no incluye al broker. Garantías:
+
+- El evento se marca publicado solo tras la confirmación de RabbitMQ. Con el
+  broker caído, la confirmación del pedido funciona igual y el evento se publica
+  al volver el broker.
+- El worker hace ACK después de guardar la orden. Un evento repetido no crea
+  otra orden (unicidad de `orden_cocina.pedido_id`).
+- Mensajes inválidos o de pedidos inexistentes van directo a la DLQ. Fallos
+  transitorios (DB caída) se reintentan hasta 10 veces con espera creciente
+  (~75 s) y luego van a la DLQ.
+
+Detalle del contrato y de la política de fallos: [docs/eventos.md](docs/eventos.md).
+
+Para comprobar el efecto, confirmar un pedido y consultar la orden creada:
+
+```bash
+docker compose exec db psql -U restaurante -d restaurante   -c "select pedido_id, estado, creado_en from orden_cocina order by creado_en desc limit 5"
+docker compose logs worker | grep cocina.consumir
+```
+
+La API registra `outbox.publicar` y el worker `cocina.consumir`, ambos con
+`eventId`, `pedidoId` y el mismo `correlationId` del request de confirmación.
+En RabbitMQ Management ([http://localhost:15672](http://localhost:15672)) se ven
+la cola de cocina, su consumidor y la DLQ.
+
+Las órdenes de cocina todavía no se consultan por HTTP ni se muestran en el
+tablero: eso corresponde a E2-07.
 
 ## Pruebas y desarrollo
 
@@ -393,9 +439,14 @@ Ver [`docs/adr/`](docs/adr/).
 
 ## Limitaciones conocidas y mejoras futuras
 
-- E2-01 a E2-04 incorporan infraestructura, datos, CRUD protegidos con Auth0 y API key.
-  Confirmación, consumidor de negocio, publicación del outbox, WebSocket y dashboard
-  siguen pendientes. La autenticación/expiración del stream se implementará con E2-07.
+- E2-01 a E2-06 incorporan infraestructura, datos, CRUD protegidos con Auth0, API key,
+  confirmación con outbox y consumidor de cocina. WebSocket, endpoints de cocina y
+  dashboard siguen pendientes. La autenticación/expiración del stream se implementará con E2-07.
+- Entrega de eventos *al menos una vez*: el efecto es idempotente, no hay entrega
+  exactamente una vez. Los mensajes en la DLQ se revisan y reprocesan manualmente
+  desde RabbitMQ Management.
+- Con la API y el worker levantados, ejecutar `test:api` hace que estos procesen
+  los eventos de prueba; la limpieza del test lo contempla.
 
 ## Tag / release y commit de esta entrega
 

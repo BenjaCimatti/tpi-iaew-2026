@@ -3,8 +3,9 @@ openapi: 3.1.0
 info:
   title: API de Pedidos de Restaurante
   version: 1.0.0
-  description: CRUD de Productos y Pedidos con JWT/scopes de Auth0. Endpoint
-    de comparación protegido exclusivamente con API key (E2-04).
+  description: CRUD de Productos y Pedidos y confirmación multi-paso con
+    JWT/scopes de Auth0. Endpoint de comparación protegido exclusivamente con
+    API key (E2-04). Los eventos asíncronos se documentan en docs/eventos.md.
 servers:
 - url: http://localhost:3000
 security:
@@ -485,6 +486,75 @@ paths:
       operationId: post_pedidos_pedidoId_cancelar
       tags:
       - Pedidos
+  "/pedidos/{pedidoId}/confirmar":
+    parameters:
+    - name: pedidoId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    post:
+      summary: Confirmar un pedido pendiente (transacción multi-paso)
+      description: >-
+        En una única transacción SQL: bloquea el pedido, exige estado `pendiente`
+        y al menos un ítem, valida que los productos existan y estén disponibles,
+        calcula el total con los precios capturados al crear/editar el pedido,
+        guarda estado `confirmado`, total y `confirmadoEn`, y registra el evento
+        `pedido.confirmado` en el outbox. Cualquier rechazo revierte todo. El
+        evento se publica en RabbitMQ después del commit (ver docs/eventos.md);
+        la orden de cocina la crea el worker de forma asíncrona, por lo que no
+        forma parte de esta respuesta. El `x-correlation-id` del request se
+        propaga al evento.
+      security:
+      - bearerAuth:
+        - confirm:pedidos
+      responses:
+        '200':
+          description: Pedido confirmado
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Pedido"
+              example:
+                id: d4e5f6a0-3333-4a2b-9c3d-000000000003
+                mesaId: b3f1a2e0-1111-4a2b-9c3d-000000000001
+                estado: confirmado
+                total: 17000
+                items:
+                - productoId: a1c9f0e0-2222-4a2b-9c3d-000000000002
+                  cantidad: 2
+                  precioUnitario: 8500
+                creadoEn: '2026-11-14T18:40:00.000Z'
+                confirmadoEn: '2026-11-14T18:42:38.000Z'
+        '400':
+          "$ref": "#/components/responses/400"
+        '401':
+          "$ref": "#/components/responses/401"
+        '403':
+          "$ref": "#/components/responses/403"
+        '404':
+          "$ref": "#/components/responses/404"
+        '409':
+          description: >-
+            `ESTADO_INCOMPATIBLE` (ya confirmado, cancelado u otro estado),
+            `PEDIDO_SIN_ITEMS`, `PRODUCTO_NO_DISPONIBLE`, `PRODUCTO_NO_ENCONTRADO`
+            o `CANTIDAD_INVALIDA`. El pedido no cambia.
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/Error"
+              example:
+                codigo: PRODUCTO_NO_DISPONIBLE
+                mensaje: El pedido contiene un producto no disponible
+                correlationId: 7b0b5d2e-8f36-4c1a-9d43-2f6f4a1f0c11
+        '500':
+          "$ref": "#/components/responses/500"
+        '503':
+          "$ref": "#/components/responses/503"
+      operationId: post_pedidos_pedidoId_confirmar
+      tags:
+      - Pedidos
   "/":
     get:
       summary: Alias del healthcheck
@@ -825,12 +895,10 @@ components:
             read:pedidos: Consultar productos y pedidos
             write:pedidos: Crear, editar, eliminar y cancelar pedidos pendientes
             admin:productos: Administrar productos
-            confirm:pedidos: Confirmar pedidos (E2-05)
+            confirm:pedidos: Confirmar pedidos
             read:cocina: Consultar cocina (E2-07)
             write:cocina: Actualizar cocina (E2-07)
 x-endpoints-pendientes:
-  E2-05:
-  - POST /pedidos/{pedidoId}/confirmar
   E2-07:
   - Consulta y cambio de estado de órdenes de cocina
 x-correlation-id: Se acepta un UUID en x-correlation-id; se genera uno si está ausente
