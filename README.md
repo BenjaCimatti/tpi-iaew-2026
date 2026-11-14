@@ -70,8 +70,16 @@ Contrato de API: [`docs/openapi.yaml`](docs/openapi.yaml) (OpenAPI 3.1).
 ## Requisitos previos
 
 - Docker y Docker Compose, con el motor iniciado (por ejemplo, Docker Desktop).
-- Node.js `24.22.1` (solo para desarrollo fuera de Docker; versión en `.nvmrc`).
-- Una cuenta gratuita en [Auth0](https://auth0.com) (o equivalente) para la Entrega 2.
+- Conexión a internet: Auth0 es un servicio externo (emisión de tokens y JWKS).
+- Una cuenta gratuita en [Auth0](https://auth0.com) con la API y los clientes M2M configurados (ver [Configuración de Auth0](#configuración-de-auth0--e2-04)).
+- Postman (app de escritorio, o web con Desktop Agent) o Node.js para ejecutar Newman con `npx`.
+- Bash para la prueba de carga (`load/run.sh`); en Windows, Git Bash.
+- Node.js `24.22.1` solo para desarrollo fuera de Docker (versión en `.nvmrc`).
+- Puertos libres: `3000`, `3001`, `3002`, `5432`, `5672`, `9090` y `15672`.
+
+Versiones fijadas: Node `24.22.1`, Express `5.3.0`, PostgreSQL `16.15`,
+RabbitMQ `4.3.6`, Prisma `7.10.1`, Prometheus `v3.15.1`, Grafana `13.3.0` y
+JMeter `5.6.3` (imágenes y `package-lock.json`).
 
 ## Variables de entorno
 
@@ -91,8 +99,10 @@ cp .env.example .env
 | `PORT` / `WORKER_PORT` | Puertos para ejecución con npm; Compose fija `3000` y `3001` respectivamente |
 | `LOG_LEVEL` | Nivel de logs JSON; por defecto `info` |
 | `AUTH0_DOMAIN` / `AUTH0_AUDIENCE` | Datos de la API configurada en Auth0 |
-| `AUTH0_CLIENT_ID` / `AUTH0_CLIENT_SECRET` | Credenciales del cliente Machine to Machine |
-| `API_KEY` | Clave de ejemplo para el endpoint protegido con `x-api-key` |
+| `AUTH0_CLIENT_ID` / `AUTH0_CLIENT_SECRET` | Credenciales del cliente Machine to Machine; las usan Postman, los tests y la carga, nunca la API ni el worker |
+| `AUTH0_READONLY_CLIENT_ID` / `AUTH0_READONLY_CLIENT_SECRET` | Opcionales: cliente M2M con solo `read:pedidos`, para probar el `403` |
+| `API_KEY` | Clave de ejemplo para el endpoint protegido con `x-api-key` (cualquier valor largo) |
+| `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` | Administrador de Grafana; la lectura del dashboard no requiere login |
 
 ## Configuración de Auth0 — E2-04
 
@@ -283,7 +293,7 @@ Las mesas 1, 2 y 3 tienen los IDs `b3f1a2e0-1111-4a2b-9c3d-000000000001`,
 `b3f1a2e0-1111-4a2b-9c3d-000000000002` y
 `b3f1a2e0-1111-4a2b-9c3d-000000000003` respectivamente, con capacidades 4, 4 y 6.
 
-Para consultar los datos directamente, sin depender de endpoints todavía pendientes:
+Para consultar los datos directamente en PostgreSQL, sin pasar por la API:
 
 ```bash
 docker compose exec db sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "SELECT id, nombre, precio FROM producto ORDER BY nombre; SELECT id, numero, capacidad FROM mesa ORDER BY numero;"'
@@ -509,33 +519,27 @@ docker compose logs api worker --no-log-prefix | grep <correlationId>
 
 ## Pruebas y desarrollo
 
-Después de construir las imágenes, ejecutar las pruebas con la misma versión de
-Node usada por los servicios, sin necesitar DB/broker:
+Los tests corren dentro del contenedor de la API, con la misma versión de Node.
+Se montan como solo lectura porque no forman parte de las imágenes de producción.
+Los comandos son para bash; en PowerShell reemplazar `"$PWD/test` por `"${PWD}/test`.
+
+| Comando | Qué prueba | Resultado verificado |
+|---|---|---|
+| `npm test` | Unitarias, sin DB ni broker: configuración, API key, broker y publisher confirms, publicador del outbox, consumidor (ACK, DLQ, reintentos), gateway WebSocket, verificador JWT y métricas | 24/24 |
+| `npm run test:db` | Restricciones SQL, seed repetible y orden de cocina idempotente ante entregas concurrentes | 3/3 |
+| `npm run test:api` | HTTP con PostgreSQL y emisor JWT/JWKS local (sin Auth0): CRUD, confirmación con outbox, cocina, entrega, scopes y concurrencia | 3/3 |
 
 ```bash
 docker compose run --rm --no-deps -T -v "$PWD/test:/app/test:ro" api npm test
-```
-
-Con la base migrada, ejecutar además las pruebas de Prisma e integridad SQL:
-
-```bash
 docker compose run --rm --no-deps -T -v "$PWD/test:/app/test:ro" api npm run test:db
-```
-
-Estas pruebas usan transacciones que se revierten al terminar; no dejan pedidos,
-eventos ni cambios de catálogo de prueba en la base. Los tests se montan como solo
-lectura porque no forman parte de las imágenes de producción.
-
-Para probar los CRUD HTTP con PostgreSQL y un emisor JWT/JWKS local, sin cuenta Auth0:
-
-```bash
 docker compose run --rm --no-deps -T -v "$PWD/test:/app/test:ro" api npm run test:api
 ```
 
-Esta prueba verifica firma/issuer/audience/expiración/scopes, ambos CRUD, atomicidad
-y cancelaciones concurrentes. Crea registros propios y los elimina al terminar;
-no cambia el catálogo ni las mesas del seed. El emisor y sus claves solo existen
-dentro del test; la API normal mantiene su configuración Auth0.
+`test:db` usa transacciones que se revierten o borra sus propios registros.
+`test:api` crea pedidos, productos y mesas propios y los elimina al terminar; no
+cambia el catálogo ni las mesas del seed. Si la API y el worker están levantados,
+pueden procesar los eventos de prueba mientras corre; la limpieza lo contempla.
+El emisor JWT y sus claves solo existen dentro del test.
 
 Para comprobar Auth0 real y API key, con `.env` configurado y el stack levantado:
 
@@ -547,7 +551,7 @@ Para incluir el caso `403`, completar `AUTH0_READONLY_CLIENT_ID` y
 `AUTH0_READONLY_CLIENT_SECRET` del cliente de solo lectura; sin ellas ese caso
 se informa omitido. Solo consulta datos y envía un body vacío en el rechazo `403`.
 Las credenciales M2M se usan desde un cliente de confianza; no se pasan a la API,
-al worker ni a las imágenes, y no deben incluirse en el futuro tablero del navegador.
+al worker ni a las imágenes, y el tablero del navegador no las contiene.
 
 Para desarrollo local, usar `nvm use` (si se usa nvm), `npm ci`, `npm run db:generate`
 y `npm test`. `npm run db:migrate`, `npm run db:seed` y `npm run test:db` requieren
