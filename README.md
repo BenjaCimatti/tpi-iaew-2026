@@ -10,7 +10,7 @@
   - Octavio Testa 94177
 - **Repositorio:** https://github.com/BenjaCimatti/tpi-iaew-2026
 - **Versión evaluable (Entrega 2):** tag/release `v2.0.1`, commit
-  `51aaa05a5ffe3a8575a2f676617b56eb52385f08` (detalle en
+  `fafb00fbe2dfa82a24c0e73f7b06fb4729cedc8c` (detalle en
   [Tag / release y commit de esta entrega](#tag--release-y-commit-de-esta-entrega)).
 
 ### Dónde encontrar cada punto de la consigna
@@ -680,7 +680,7 @@ privado de Postman están en `.gitignore`.
 | Entrega | Tag | Commit |
 |---|---|---|
 | Entrega 1 | `v1.0.0` | `8b3aa05d8e8463ff1a8b62c14aef7604aa1032f3` |
-| **Entrega 2** | **`v2.0.1`** | **`51aaa05a5ffe3a8575a2f676617b56eb52385f08`** |
+| **Entrega 2** | **`v2.0.1`** | **`fafb00fbe2dfa82a24c0e73f7b06fb4729cedc8c`** |
 
 Release: https://github.com/BenjaCimatti/tpi-iaew-2026/releases/tag/v2.0.1
 
@@ -688,6 +688,6 @@ Release: https://github.com/BenjaCimatti/tpi-iaew-2026/releases/tag/v2.0.1
 Entrega 2 se usa `v2.0.1`.
 
 Un archivo no puede contener el hash del mismo commit que lo incluye. Por eso
-`51aaa05` es el **commit evaluable**, con todo el código, la documentación y las
+`fafb00f` es el **commit evaluable**, con todo el código, la documentación y las
 evidencias de la Entrega 2. El tag `v2.0.1` apunta al commit inmediatamente
 posterior, que solo agrega estos datos de versión al README.
